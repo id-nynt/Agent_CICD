@@ -1,0 +1,14 @@
+{
+  "scenario": "stage_failure",
+  "candidate_version": "candidate",
+  "actions": [{"name":"reset","expected":"passed","actual":"passed","mode":"real_action","detail":"Runtime reset with stable in production."},{"name":"build","expected":"passed","actual":"passed","mode":"real_action","detail":"[build] PASS: built candidate"},{"name":"test","expected":"failed","actual":"failed","mode":"simulated_outcome","detail":"Scenario marks this stage as failed."}],
+  "telemetry": {"error_rate":0.01,"latency_p95_ms":140,"availability":0.999},
+  "context": {"network_issue_suspected":false,"reobserve_after_failure":false},
+  "expected": {
+    "traditional_decision": "stop_pipeline",
+    "bdi_decision": "abandon_release_or_request_fix"
+  },
+  "final_decision": "stop_pipeline",
+  "final_production_version": "stable",
+  "success": true
+}

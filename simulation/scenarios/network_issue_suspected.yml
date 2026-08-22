@@ -1,0 +1,27 @@
+name: network_issue_suspected
+initial_state:
+  stable_version: stable
+  production_version: stable
+release:
+  candidate_version: candidate
+stages:
+  build: passed
+  test: passed
+  security_scan: passed
+  staging_deploy: passed
+  staging_health: passed
+  production_deploy: passed
+  production_health: failed
+telemetry:
+  error_rate: 0.03
+  latency_p95_ms: 750
+  availability: 0.97
+context:
+  network_issue_suspected: true
+  reobserve_after_failure: true
+  reobserved_error_rate: 0.02
+  reobserved_latency_p95_ms: 260
+  reobserved_availability: 0.995
+expected:
+  traditional_decision: rollback
+  bdi_decision: pause_reobserve_then_decide

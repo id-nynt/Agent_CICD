@@ -1,0 +1,11 @@
+{
+  "service": "payment-service",
+  "version": "1.0.0",
+  "release": "stable",
+  "paymentProvider": "sandbox",
+  "features": {
+    "cardPayments": true,
+    "refunds": true,
+    "riskChecks": "basic"
+  }
+}

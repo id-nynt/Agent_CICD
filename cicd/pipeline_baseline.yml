@@ -1,0 +1,35 @@
+stages:
+  - build
+  - test
+  - security
+  - staging
+  - production
+
+build:
+  stage: build
+  script:
+    - ./cicd/actions/build.sh candidate
+
+test:
+  stage: test
+  script:
+    - ./cicd/actions/test.sh candidate
+
+security:
+  stage: security
+  script:
+    - ./cicd/actions/security_scan.sh candidate
+
+staging:
+  stage: staging
+  script:
+    - ./cicd/actions/deploy.sh staging candidate
+    - ./cicd/actions/health_check.sh staging
+
+production:
+  stage: production
+  script:
+    - ./cicd/actions/deploy.sh production candidate
+    - ./cicd/actions/health_check.sh production
+  on_failure:
+    - ./cicd/actions/rollback.sh production

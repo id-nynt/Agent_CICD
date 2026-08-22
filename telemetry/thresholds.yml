@@ -1,0 +1,3 @@
+error_rate_high_gt: 0.05
+latency_p95_ms_high_gt: 500
+availability_low_lt: 0.99

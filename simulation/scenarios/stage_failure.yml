@@ -1,0 +1,24 @@
+name: stage_failure
+initial_state:
+  stable_version: stable
+  production_version: stable
+release:
+  candidate_version: candidate
+stages:
+  build: passed
+  test: failed
+  security_scan: not_run
+  staging_deploy: not_run
+  staging_health: not_run
+  production_deploy: not_run
+  production_health: not_run
+telemetry:
+  error_rate: 0.01
+  latency_p95_ms: 140
+  availability: 0.999
+context:
+  network_issue_suspected: false
+  reobserve_after_failure: false
+expected:
+  traditional_decision: stop_pipeline
+  bdi_decision: abandon_release_or_request_fix

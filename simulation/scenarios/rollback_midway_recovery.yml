@@ -1,0 +1,27 @@
+name: rollback_midway_recovery
+initial_state:
+  stable_version: stable
+  production_version: stable
+release:
+  candidate_version: candidate
+stages:
+  build: passed
+  test: passed
+  security_scan: passed
+  staging_deploy: passed
+  staging_health: passed
+  production_deploy: passed
+  production_health: failed
+telemetry:
+  error_rate: 0.08
+  latency_p95_ms: 650
+  availability: 0.95
+context:
+  network_issue_suspected: false
+  reobserve_after_failure: true
+  reobserved_error_rate: 0.01
+  reobserved_latency_p95_ms: 180
+  reobserved_availability: 0.999
+expected:
+  traditional_decision: rollback
+  bdi_decision: pause_or_reobserve_before_rollback

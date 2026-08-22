@@ -1,0 +1,14 @@
+{
+  "scenario": "success_stable",
+  "candidate_version": "candidate",
+  "actions": [{"name":"reset","expected":"passed","actual":"passed","mode":"real_action","detail":"Runtime reset with stable in production."},{"name":"build","expected":"passed","actual":"passed","mode":"real_action","detail":"[build] PASS: built candidate"},{"name":"test","expected":"passed","actual":"passed","mode":"real_action","detail":"[test] PASS: tests passed for candidate"},{"name":"security_scan","expected":"passed","actual":"passed","mode":"real_action","detail":"[security_scan] PASS: no simple secret patterns found for candidate"},{"name":"deploy_staging","expected":"passed","actual":"passed","mode":"real_action","detail":"[deploy] PASS: deployed candidate to staging"},{"name":"health_check_staging","expected":"passed","actual":"passed","mode":"real_action","detail":"[health_check] PASS: staging is healthy"},{"name":"deploy_production","expected":"passed","actual":"passed","mode":"real_action","detail":"[deploy] PASS: deployed candidate to production"},{"name":"health_check_production","expected":"passed","actual":"passed","mode":"real_action","detail":"[health_check] PASS: production is healthy"}],
+  "telemetry": {"error_rate":0.01,"latency_p95_ms":120,"availability":0.999},
+  "context": {"network_issue_suspected":false,"reobserve_after_failure":false},
+  "expected": {
+    "traditional_decision": "release_success",
+    "bdi_decision": "release_success"
+  },
+  "final_decision": "release_success",
+  "final_production_version": "candidate",
+  "success": true
+}

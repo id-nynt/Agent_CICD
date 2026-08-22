@@ -1,0 +1,24 @@
+name: production_unstable
+initial_state:
+  stable_version: stable
+  production_version: stable
+release:
+  candidate_version: candidate
+stages:
+  build: passed
+  test: passed
+  security_scan: passed
+  staging_deploy: passed
+  staging_health: passed
+  production_deploy: passed
+  production_health: failed
+telemetry:
+  error_rate: 0.12
+  latency_p95_ms: 900
+  availability: 0.91
+context:
+  network_issue_suspected: false
+  reobserve_after_failure: false
+expected:
+  traditional_decision: rollback
+  bdi_decision: rollback_after_unstable_belief

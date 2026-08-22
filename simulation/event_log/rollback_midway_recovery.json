@@ -1,0 +1,14 @@
+{
+  "scenario": "rollback_midway_recovery",
+  "candidate_version": "candidate",
+  "actions": [{"name":"reset","expected":"passed","actual":"passed","mode":"real_action","detail":"Runtime reset with stable in production."},{"name":"build","expected":"passed","actual":"passed","mode":"real_action","detail":"[build] PASS: built candidate"},{"name":"test","expected":"passed","actual":"passed","mode":"real_action","detail":"[test] PASS: tests passed for candidate"},{"name":"security_scan","expected":"passed","actual":"passed","mode":"real_action","detail":"[security_scan] PASS: no simple secret patterns found for candidate"},{"name":"deploy_staging","expected":"passed","actual":"passed","mode":"real_action","detail":"[deploy] PASS: deployed candidate to staging"},{"name":"health_check_staging","expected":"passed","actual":"passed","mode":"real_action","detail":"[health_check] PASS: staging is healthy"},{"name":"deploy_production","expected":"passed","actual":"passed","mode":"real_action","detail":"[deploy] PASS: deployed candidate to production"},{"name":"health_check_production","expected":"failed","actual":"failed","mode":"simulated_outcome","detail":"Scenario marks this stage as failed."},{"name":"rollback_production","expected":"expected_by_traditional_decision","actual":"not_executed","mode":"expectation_only","detail":"Phase 2 records rollback expectation; recovery execution belongs to later decision layers."},{"name":"reobserve_production","expected":"expected_by_bdi_decision","actual":"recorded","mode":"simulated_context","detail":"Scenario includes updated telemetry for a later BDI reasoning phase."}],
+  "telemetry": {"error_rate":0.08,"latency_p95_ms":650,"availability":0.95},
+  "context": {"network_issue_suspected":false,"reobserve_after_failure":true},
+  "expected": {
+    "traditional_decision": "rollback",
+    "bdi_decision": "pause_or_reobserve_before_rollback"
+  },
+  "final_decision": "rollback_expected",
+  "final_production_version": "candidate",
+  "success": true
+}
