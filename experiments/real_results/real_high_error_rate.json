@@ -1,0 +1,251 @@
+{
+  "scenario": "real_high_error_rate",
+  "description": "Candidate passes /health but business traffic fails, producing a high Prometheus error rate.",
+  "scenario_definition": {
+    "environment": {
+      "staging": {
+        "version": "candidate",
+        "failure_mode": "none",
+        "force_error_rate": "0",
+        "extra_latency_ms": "0"
+      },
+      "production": {
+        "version": "candidate",
+        "failure_mode": "pay_error",
+        "force_error_rate": "0",
+        "extra_latency_ms": "0"
+      }
+    },
+    "traffic_pattern": "Send repeated /pay requests mixed with /refund requests; expect /pay to return HTTP 500 while /health still passes.",
+    "observation_count": 1,
+    "reobserve_expected": false,
+    "proves": "BDI can roll back from telemetry-derived production instability that a health-check-only pipeline would miss."
+  },
+  "traditional_ci_cd_decision": "release_success",
+  "bdi_decision": "rollback_production",
+  "final_decision": "rollback_production",
+  "expected_bdi_decision": "rollback_production",
+  "telemetry_source": "prometheus",
+  "telemetry": {
+    "error_rate": 1.0,
+    "latency_p95_ms": 4.75,
+    "availability": 1.0
+  },
+  "prometheus_queries": {
+    "error_rate": "sum(payment_service_errors_total{environment=\"production\",endpoint=~\"/pay|/refund\"}) / clamp_min(sum(payment_service_requests_total{environment=\"production\",endpoint=~\"/pay|/refund\"}), 1)",
+    "latency_p95_ms": "histogram_quantile(0.95, sum by (le) (payment_service_request_latency_seconds_bucket{environment=\"production\",endpoint=~\"/pay|/refund\"})) * 1000",
+    "availability": "avg(payment_service_health{environment=\"production\"})"
+  },
+  "observations": [
+    {
+      "index": 1,
+      "telemetry": {
+        "error_rate": 1.0,
+        "latency_p95_ms": 4.75,
+        "availability": 1.0
+      },
+      "traffic": [
+        {
+          "endpoint": "/pay",
+          "status": 500,
+          "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+        },
+        {
+          "endpoint": "/pay",
+          "status": 500,
+          "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+        },
+        {
+          "endpoint": "/pay",
+          "status": 500,
+          "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+        },
+        {
+          "endpoint": "/pay",
+          "status": 500,
+          "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+        },
+        {
+          "endpoint": "/pay",
+          "status": 500,
+          "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+        },
+        {
+          "endpoint": "/pay",
+          "status": 500,
+          "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+        },
+        {
+          "endpoint": "/pay",
+          "status": 500,
+          "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+        },
+        {
+          "endpoint": "/pay",
+          "status": 500,
+          "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+        }
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "endpoint": "/pay",
+      "status": 500,
+      "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+    },
+    {
+      "endpoint": "/pay",
+      "status": 500,
+      "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+    },
+    {
+      "endpoint": "/pay",
+      "status": 500,
+      "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+    },
+    {
+      "endpoint": "/pay",
+      "status": 500,
+      "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+    },
+    {
+      "endpoint": "/pay",
+      "status": 500,
+      "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+    },
+    {
+      "endpoint": "/pay",
+      "status": 500,
+      "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+    },
+    {
+      "endpoint": "/pay",
+      "status": 500,
+      "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+    },
+    {
+      "endpoint": "/pay",
+      "status": 500,
+      "body": "{\"message\":\"failure injected for prototype telemetry\",\"operation\":\"pay\",\"status\":\"error\",\"version\":\"candidate\"}\n"
+    }
+  ],
+  "initial_beliefs": [
+    "scenario(real_high_error_rate).",
+    "candidate_version(candidate).",
+    "production_version(candidate).",
+    "status(build, passed).",
+    "status(test, passed).",
+    "status(security_scan, passed).",
+    "status(deploy(staging), passed).",
+    "status(health_check(staging), passed).",
+    "status(deploy(production), passed).",
+    "status(health_check(production), passed).",
+    "metric(production, error_rate, high).",
+    "metric(production, latency, normal).",
+    "metric(production, availability, high).",
+    "environment(staging, stable).",
+    "environment(production, unstable).",
+    "network_issue_suspected(false).",
+    "reobserve_after_failure(false).",
+    "expected_traditional_decision(release_success).",
+    "expected_bdi_decision(rollback_production).",
+    "rollback_available(production)."
+  ],
+  "selected_bdi_actions": [
+    "build(candidate)",
+    "test(candidate)",
+    "security_scan(candidate)",
+    "deploy(staging, candidate)",
+    "health_check(staging)",
+    "deploy(production, candidate)",
+    "health_check(production)",
+    "rollback(production)"
+  ],
+  "action_log": [
+    {
+      "action": "build",
+      "expected": "passed",
+      "actual": "passed",
+      "returncode": 0,
+      "output": "#1 [internal] load local bake definitions\n#1 reading from stdin 1.19kB done\n#1 DONE 0.0s\n\n#2 [payment-staging internal] load build definition from Dockerfile\n#2 transferring dockerfile: 231B 0.0s done\n#2 DONE 0.0s\n\n#3 [payment-production internal] load metadata for docker.io/library/python:3.12-slim\n#3 DONE 0.4s\n\n#4 [payment-production internal] load .dockerignore\n#4 transferring context: 85B done\n#4 DONE 0.0s\n\n#5 [payment-production internal] load build context\n#5 transferring context: 67B done\n#5 DONE 0.0s\n\n#6 [payment-production 1/5] FROM docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a\n#6 resolve docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a 0.0s done\n#6 DONE 0.0s\n\n#7 [payment-production 2/5] WORKDIR /service\n#7 CACHED\n\n#8 [payment-production 3/5] COPY requirements.txt .\n#8 CACHED\n\n#9 [payment-production 4/5] RUN pip install --no-cache-dir -r requirements.txt\n#9 CACHED\n\n#10 [payment-production 5/5] COPY service.py .\n#10 CACHED\n\n#11 [payment-staging] exporting to image\n#11 exporting layers done\n#11 exporting manifest sha256:7bb3fe8eeb56f8fd17d64bdea8669c3ba0e37683af0a0666fd8ca622891ae591 done\n#11 exporting config sha256:b73f7a41074835768300df3a4e1f1562f8fa19f8661f2bf84b7d97b05afb97b2 done\n#11 exporting attestation manifest sha256:3bb524559615d9eae77aaaf93d20c6ca9ea3027d1bb0bcd0ccbab64a914956bf 0.1s done\n#11 exporting manifest list sha256:bd89ff8debe8fe0dee208114c5c63ab502f51a8459c3230fb9360f90cccdd9ac\n#11 exporting manifest list sha256:bd89ff8debe8fe0dee208114c5c63ab502f51a8459c3230fb9360f90cccdd9ac 0.0s done\n#11 naming to docker.io/library/260023_bdi_cicd-payment-staging:latest done\n#11 unpacking to docker.io/library/260023_bdi_cicd-payment-staging:latest 0.0s done\n#11 DONE 0.2s\n\n#12 [payment-production] exporting to image\n#12 exporting layers done\n#12 exporting manifest sha256:eb850b27d1ed65ca22d2feb017b8e5801c4fc073a88f511ec99c64702646fc4b done\n#12 exporting config sha256:f7c988cf219a654d1d08c9946d155285c08e9f5a863e6b37acf01ef765a3da81 done\n#12 exporting attestation manifest sha256:07b7fb43c7df0c671536ebdf749ae64325841104955700d5eb21009f1599e801 0.1s done\n#12 exporting manifest list sha256:cbb626a9b59147d0259a367e3d3f4f683a40602b73843fae6b0bb22e129090d6 0.0s done\n#12 naming to docker.io/library/260023_bdi_cicd-payment-production:latest done\n#12 unpacking to docker.io/library/260023_bdi_cicd-payment-production:latest 0.0s done\n#12 DONE 0.2s\n\n#13 [payment-staging] resolving provenance for metadata file\n#13 DONE 0.0s\n\n#14 [payment-production] resolving provenance for metadata file\n#14 DONE 0.0s\n[build] PASS: built payment service image for candidate (docker)\n 260023_bdi_cicd-payment-staging  Built\n 260023_bdi_cicd-payment-production  Built"
+    },
+    {
+      "action": "test",
+      "expected": "passed",
+      "actual": "passed",
+      "returncode": 0,
+      "output": "[test] PASS: service tests passed for candidate"
+    },
+    {
+      "action": "security_scan",
+      "expected": "passed",
+      "actual": "passed",
+      "returncode": 0,
+      "output": "[security_scan] PASS: no simple secret patterns found for payment service candidate"
+    },
+    {
+      "action": "deploy_staging",
+      "expected": "passed",
+      "actual": "passed",
+      "returncode": 0,
+      "output": "#1 [internal] load local bake definitions\n#1 reading from stdin 632B done\n#1 DONE 0.0s\n\n#2 [internal] load build definition from Dockerfile\n#2 transferring dockerfile: 231B done\n#2 DONE 0.0s\n\n#3 [internal] load metadata for docker.io/library/python:3.12-slim\n#3 DONE 0.4s\n\n#4 [internal] load .dockerignore\n#4 transferring context: 85B done\n#4 DONE 0.0s\n\n#5 [internal] load build context\n#5 transferring context: 67B done\n#5 DONE 0.0s\n\n#6 [1/5] FROM docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a\n#6 resolve docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a 0.0s done\n#6 DONE 0.0s\n\n#7 [3/5] COPY requirements.txt .\n#7 CACHED\n\n#8 [4/5] RUN pip install --no-cache-dir -r requirements.txt\n#8 CACHED\n\n#9 [2/5] WORKDIR /service\n#9 CACHED\n\n#10 [5/5] COPY service.py .\n#10 CACHED\n\n#11 exporting to image\n#11 exporting layers done\n#11 exporting manifest sha256:7bb3fe8eeb56f8fd17d64bdea8669c3ba0e37683af0a0666fd8ca622891ae591 done\n#11 exporting config sha256:b73f7a41074835768300df3a4e1f1562f8fa19f8661f2bf84b7d97b05afb97b2 done\n#11 exporting attestation manifest sha256:bd6728a41963c7625d6401f7d4cad0c582aa1403b46905513e3f6f06482a64a7 0.0s done\n#11 exporting manifest list sha256:9377eb11559a72e87f097481fe4e2c99eceaf86ac2b458e5e448ac0720762707\n#11 exporting manifest list sha256:9377eb11559a72e87f097481fe4e2c99eceaf86ac2b458e5e448ac0720762707 0.0s done\n#11 naming to docker.io/library/260023_bdi_cicd-payment-staging:latest done\n#11 unpacking to docker.io/library/260023_bdi_cicd-payment-staging:latest 0.0s done\n#11 DONE 0.1s\n\n#12 resolving provenance for metadata file\n#12 DONE 0.0s\n[deploy] PASS: deployed candidate to staging using payment-staging\n 260023_bdi_cicd-payment-staging  Built\n Container payment-staging  Recreate\n Container payment-staging  Recreated\n Container payment-staging  Starting\n Container payment-staging  Started\n Container prometheus  Running"
+    },
+    {
+      "action": "health_check_staging",
+      "expected": "passed",
+      "actual": "passed",
+      "returncode": 0,
+      "output": "[health_check] PASS: staging is healthy at http://localhost:8001/health"
+    },
+    {
+      "action": "deploy_production",
+      "expected": "passed",
+      "actual": "passed",
+      "returncode": 0,
+      "output": "#1 [internal] load local bake definitions\n#1 reading from stdin 644B done\n#1 DONE 0.0s\n\n#2 [internal] load build definition from Dockerfile\n#2 transferring dockerfile: 231B done\n#2 DONE 0.0s\n\n#3 [internal] load metadata for docker.io/library/python:3.12-slim\n#3 DONE 0.4s\n\n#4 [internal] load .dockerignore\n#4 transferring context: 85B done\n#4 DONE 0.0s\n\n#5 [internal] load build context\n#5 transferring context: 67B done\n#5 DONE 0.0s\n\n#6 [1/5] FROM docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a\n#6 resolve docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a 0.0s done\n#6 DONE 0.0s\n\n#7 [4/5] RUN pip install --no-cache-dir -r requirements.txt\n#7 CACHED\n\n#8 [2/5] WORKDIR /service\n#8 CACHED\n\n#9 [3/5] COPY requirements.txt .\n#9 CACHED\n\n#10 [5/5] COPY service.py .\n#10 CACHED\n\n#11 exporting to image\n#11 exporting layers done\n#11 exporting manifest sha256:eb850b27d1ed65ca22d2feb017b8e5801c4fc073a88f511ec99c64702646fc4b done\n#11 exporting config sha256:f7c988cf219a654d1d08c9946d155285c08e9f5a863e6b37acf01ef765a3da81 done\n#11 exporting attestation manifest sha256:a71086cd4fbc70478cb457ba1f500beaeaf565121a68f1c84f840fd77e78e5e6 0.0s done\n#11 exporting manifest list sha256:ec57ee7d4dcaf2b2b3bb4d37f291ec477ea4886cca0d91e0bb9aa6ea24ec43df\n#11 exporting manifest list sha256:ec57ee7d4dcaf2b2b3bb4d37f291ec477ea4886cca0d91e0bb9aa6ea24ec43df 0.0s done\n#11 naming to docker.io/library/260023_bdi_cicd-payment-production:latest done\n#11 unpacking to docker.io/library/260023_bdi_cicd-payment-production:latest 0.0s done\n#11 DONE 0.2s\n\n#12 resolving provenance for metadata file\n#12 DONE 0.0s\n[deploy] PASS: deployed candidate to production using payment-production\n 260023_bdi_cicd-payment-production  Built\n Container payment-production  Recreate\n Container payment-production  Recreated\n Container payment-production  Starting\n Container payment-production  Started\n Container prometheus  Running"
+    },
+    {
+      "action": "health_check_production",
+      "expected": "passed",
+      "actual": "passed",
+      "returncode": 0,
+      "output": "[health_check] PASS: production is healthy at http://localhost:8002/health"
+    },
+    {
+      "action": "rollback_production",
+      "expected": "passed",
+      "actual": "passed",
+      "returncode": 0,
+      "output": "#1 [internal] load local bake definitions\n#1 reading from stdin 644B done\n#1 DONE 0.0s\n\n#2 [internal] load build definition from Dockerfile\n#2 transferring dockerfile: 231B done\n#2 DONE 0.0s\n\n#3 [internal] load metadata for docker.io/library/python:3.12-slim\n#3 DONE 1.0s\n\n#4 [internal] load .dockerignore\n#4 transferring context: 85B 0.0s done\n#4 DONE 0.0s\n\n#5 [internal] load build context\n#5 transferring context: 67B 0.0s done\n#5 DONE 0.0s\n\n#6 [1/5] FROM docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a\n#6 resolve docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a 0.1s done\n#6 DONE 0.1s\n\n#7 [4/5] RUN pip install --no-cache-dir -r requirements.txt\n#7 CACHED\n\n#8 [2/5] WORKDIR /service\n#8 CACHED\n\n#9 [3/5] COPY requirements.txt .\n#9 CACHED\n\n#10 [5/5] COPY service.py .\n#10 CACHED\n\n#11 exporting to image\n#11 exporting layers 0.0s done\n#11 exporting manifest sha256:eb850b27d1ed65ca22d2feb017b8e5801c4fc073a88f511ec99c64702646fc4b done\n#11 exporting config sha256:f7c988cf219a654d1d08c9946d155285c08e9f5a863e6b37acf01ef765a3da81 done\n#11 exporting attestation manifest sha256:4e95326cc35383eec28cae6422834fc1e3fc4b384870c30d809285063be27fc8 0.1s done\n#11 exporting manifest list sha256:754ba4b66cd17d0388cf15468de4da3933d7b618e723ad25491d1241086e53ba\n#11 exporting manifest list sha256:754ba4b66cd17d0388cf15468de4da3933d7b618e723ad25491d1241086e53ba 0.0s done\n#11 naming to docker.io/library/260023_bdi_cicd-payment-production:latest done\n#11 unpacking to docker.io/library/260023_bdi_cicd-payment-production:latest 0.0s done\n#11 DONE 0.3s\n\n#12 resolving provenance for metadata file\n#12 DONE 0.0s\n[rollback] PASS: restored production to stable\n 260023_bdi_cicd-payment-production  Built\n Container payment-production  Recreate\n Container payment-production  Recreated\n Container payment-production  Starting\n Container payment-production  Started\n Container prometheus  Running"
+    }
+  ],
+  "success": true,
+  "bdi_trace": [
+    "[bdi_runner] generated agent: /c/NHI/2026_IT-Project/260023_BDI_CICD/bdi/generated/real_high_error_rate_agent.asl",
+    "[bdi_runner] generated project: /c/NHI/2026_IT-Project/260023_BDI_CICD/bdi/generated/real_high_error_rate.mas2j",
+    "",
+    "BDI trace for scenario: real_high_error_rate",
+    "Goal: deliver_release",
+    "Action: build(candidate)",
+    "Result: build passed",
+    "Action: test(candidate)",
+    "Result: tests passed",
+    "Action: security_scan(candidate)",
+    "Result: security scan passed",
+    "Action: deploy(staging, candidate)",
+    "Result: staging deploy passed",
+    "Action: health_check(staging)",
+    "Result: staging stable",
+    "Action: deploy(production, candidate)",
+    "Result: production deploy passed",
+    "Action: health_check(production)",
+    "Result: production health passed",
+    "Goal: maintain_reliability",
+    "Goal: recover_if_failed",
+    "Action: rollback(production)",
+    "Decision: rollback_production",
+    "Goal: record_experiment_result",
+    "Result: reasoning trace complete"
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "scenario": "real_security_scan_failure",
+  "description": "Candidate is blocked by the existing security scan before staging or production deployment.",
+  "scenario_definition": {
+    "environment": {
+      "staging": {
+        "version": "candidate",
+        "failure_mode": "none",
+        "force_error_rate": "0",
+        "extra_latency_ms": "0"
+      },
+      "production": {
+        "version": "stable",
+        "failure_mode": "none",
+        "force_error_rate": "0",
+        "extra_latency_ms": "0"
+      }
+    },
+    "traffic_pattern": "Run build, test, and security scan only; do not generate service traffic after the security gate fails.",
+    "observation_count": 0,
+    "reobserve_expected": false,
+    "proves": "BDI remains compatible with the public CI/CD gate sequence and stops on a pre-deployment security failure."
+  },
+  "traditional_ci_cd_decision": "stop_pipeline",
+  "bdi_decision": "stop_pipeline",
+  "final_decision": "stop_pipeline",
+  "expected_bdi_decision": "stop_pipeline",
+  "telemetry_source": "prometheus",
+  "telemetry": {
+    "error_rate": 0.0,
+    "latency_p95_ms": 0.0,
+    "availability": 1.0
+  },
+  "prometheus_queries": {},
+  "observations": [
+    {
+      "index": 1,
+      "telemetry": {
+        "error_rate": 0.0,
+        "latency_p95_ms": 0.0,
+        "availability": 1.0
+      },
+      "traffic": []
+    }
+  ],
+  "traffic": [],
+  "initial_beliefs": [
+    "scenario(real_security_scan_failure).",
+    "candidate_version(candidate).",
+    "production_version(stable).",
+    "status(build, passed).",
+    "status(test, passed).",
+    "status(security_scan, failed).",
+    "status(deploy(staging), not_run).",
+    "status(health_check(staging), not_run).",
+    "status(deploy(production), not_run).",
+    "status(health_check(production), not_run).",
+    "metric(production, error_rate, normal).",
+    "metric(production, latency, normal).",
+    "metric(production, availability, high).",
+    "environment(staging, unstable).",
+    "environment(production, stable).",
+    "network_issue_suspected(false).",
+    "reobserve_after_failure(false).",
+    "expected_traditional_decision(stop_pipeline).",
+    "expected_bdi_decision(stop_pipeline)."
+  ],
+  "selected_bdi_actions": [
+    "build(candidate)",
+    "test(candidate)",
+    "security_scan(candidate)"
+  ],
+  "action_log": [
+    {
+      "action": "build",
+      "expected": "passed",
+      "actual": "passed",
+      "returncode": 0,
+      "output": "#1 [internal] load local bake definitions\n#1 reading from stdin 1.19kB done\n#1 DONE 0.0s\n\n#2 [payment-production internal] load build definition from Dockerfile\n#2 transferring dockerfile: 231B 0.0s done\n#2 DONE 0.0s\n\n#3 [payment-production internal] load metadata for docker.io/library/python:3.12-slim\n#3 DONE 0.6s\n\n#4 [payment-production internal] load .dockerignore\n#4 transferring context: 85B 0.0s done\n#4 DONE 0.0s\n\n#5 [payment-staging internal] load build context\n#5 transferring context: 67B done\n#5 DONE 0.0s\n\n#6 [payment-production 1/5] FROM docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a\n#6 resolve docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a 0.1s done\n#6 DONE 0.1s\n\n#7 [payment-production 2/5] WORKDIR /service\n#7 CACHED\n\n#8 [payment-production 3/5] COPY requirements.txt .\n#8 CACHED\n\n#9 [payment-production 4/5] RUN pip install --no-cache-dir -r requirements.txt\n#9 CACHED\n\n#10 [payment-production 5/5] COPY service.py .\n#10 CACHED\n\n#11 [payment-staging] exporting to image\n#11 exporting layers\n#11 exporting layers done\n#11 exporting manifest sha256:7bb3fe8eeb56f8fd17d64bdea8669c3ba0e37683af0a0666fd8ca622891ae591 done\n#11 exporting config sha256:b73f7a41074835768300df3a4e1f1562f8fa19f8661f2bf84b7d97b05afb97b2 done\n#11 exporting attestation manifest sha256:a917f4ab6ce0a4bf946959b5766f58228ee62fac579e76c4909a1493610c1554 0.1s done\n#11 exporting manifest list sha256:02058ac493f47a8344fa4dfe5f4022e0f53c78cb01372ccd74d0963b4423b959 0.0s done\n#11 naming to docker.io/library/260023_bdi_cicd-payment-staging:latest done\n#11 unpacking to docker.io/library/260023_bdi_cicd-payment-staging:latest 0.0s done\n#11 DONE 0.3s\n\n#12 [payment-production] exporting to image\n#12 exporting layers done\n#12 exporting manifest sha256:eb850b27d1ed65ca22d2feb017b8e5801c4fc073a88f511ec99c64702646fc4b done\n#12 exporting config sha256:f7c988cf219a654d1d08c9946d155285c08e9f5a863e6b37acf01ef765a3da81 done\n#12 exporting attestation manifest sha256:51f896f5bef3052aabb9ddbfdedeee6c6c1d72e1eab420823334a37f5f428705 0.1s done\n#12 exporting manifest list sha256:09b4f7c5571270b591bc09d517431224eb8ea21b8ad30ce6a2660a4e959ec8a0 0.0s done\n#12 naming to docker.io/library/260023_bdi_cicd-payment-production:latest done\n#12 unpacking to docker.io/library/260023_bdi_cicd-payment-production:latest 0.0s done\n#12 DONE 0.3s\n\n#13 [payment-staging] resolving provenance for metadata file\n#13 DONE 0.0s\n\n#14 [payment-production] resolving provenance for metadata file\n#14 DONE 0.0s\n[build] PASS: built payment service image for candidate (docker)\n 260023_bdi_cicd-payment-staging  Built\n 260023_bdi_cicd-payment-production  Built"
+    },
+    {
+      "action": "test",
+      "expected": "passed",
+      "actual": "passed",
+      "returncode": 0,
+      "output": "[test] PASS: service tests passed for candidate"
+    },
+    {
+      "action": "security_scan",
+      "expected": "failed",
+      "actual": "failed",
+      "returncode": null,
+      "output": "Scenario defines a candidate security finding; deployment is intentionally blocked before staging.",
+      "mode": "scenario_control"
+    }
+  ],
+  "success": true,
+  "bdi_trace": [
+    "[bdi_runner] generated agent: /c/NHI/2026_IT-Project/260023_BDI_CICD/bdi/generated/real_security_scan_failure_agent.asl",
+    "[bdi_runner] generated project: /c/NHI/2026_IT-Project/260023_BDI_CICD/bdi/generated/real_security_scan_failure.mas2j",
+    "",
+    "BDI trace for scenario: real_security_scan_failure",
+    "Goal: deliver_release",
+    "Action: build(candidate)",
+    "Result: build passed",
+    "Action: test(candidate)",
+    "Result: tests passed",
+    "Action: security_scan(candidate)",
+    "Result: security scan failed",
+    "Decision: stop_pipeline"
+  ]
+}

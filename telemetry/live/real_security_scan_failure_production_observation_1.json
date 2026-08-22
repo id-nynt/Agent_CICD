@@ -1,0 +1,10 @@
+{
+  "environment": "production",
+  "queries": {},
+  "source": "prometheus",
+  "telemetry": {
+    "availability": 1.0,
+    "error_rate": 0.0,
+    "latency_p95_ms": 0.0
+  }
+}

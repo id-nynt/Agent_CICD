@@ -1,6 +1,5 @@
 MAS cicd_bdi {
-  infrastructure: Centralised
+  environment: CicdEnvironment
 
-  agents:
-    cicd_agent agentArchClass jason.architecture.AgArch;
+  agents: deployment_agent;
 }

@@ -1,221 +1,121 @@
 # BDI CI/CD Research Prototype
 
-This repository is a research prototype for an autonomous CI/CD pipeline using a BDI multi-agent system.
+This repository is a research prototype that compares a traditional CI/CD pipeline with a BDI-based CI/CD decision layer.
 
-## Phase 1: Demo App And CI/CD Actions
-
-Phase 1 provides a minimal file-based payment service and a shell-callable CI/CD action layer. The goal is to create simple actions that a later BDI agent can choose from; this phase does not implement BDI reasoning, scenario simulation, telemetry mapping, Prometheus, OpenTelemetry, Kubernetes, GitHub API integration, or ML.
-
-The demo service has two versions:
-
-| Version | Location | Purpose |
-| --- | --- | --- |
-| `stable` | `app/versions/stable/` | Current production baseline |
-| `candidate` | `app/versions/candidate/` | Release candidate for validation and deployment |
-
-Runtime state is stored under `runtime/`.
-
-### Run Actions
-
-From the repository root:
-
-```sh
-./cicd/actions/reset.sh
-./cicd/actions/build.sh candidate
-./cicd/actions/test.sh candidate
-./cicd/actions/security_scan.sh candidate
-./cicd/actions/deploy.sh staging candidate
-./cicd/actions/health_check.sh staging
-./cicd/actions/deploy.sh production candidate
-./cicd/actions/health_check.sh production
-```
-
-Rollback can be tested after a production deployment:
-
-```sh
-./cicd/actions/rollback.sh production
-```
-
-The baseline traditional pipeline shape is documented in:
+BDI means:
 
 ```text
-cicd/pipeline_baseline.yml
+Beliefs -> Desires -> Intentions
 ```
 
-Each action is intentionally independent so later phases can call the same action interface from a scenario runner or BDI agent.
+In this project, the BDI agent does not replace CI/CD scripts. Instead, it reasons over deployment status and telemetry, then chooses what the pipeline should do next.
 
-## Phase 2: Scenario Simulation
+The current prototype demonstrates two paths:
 
-Phase 2 adds data-driven scenarios under `simulation/scenarios/` and a local runner that records machine-readable event logs under `simulation/event_log/`.
+```text
+Traditional CI/CD:
+build -> test -> security scan -> deploy -> health check -> release or rollback
 
-Run one scenario:
-
-```sh
-./simulation/scenario_runner.sh simulation/scenarios/success_stable.yml
+BDI CI/CD:
+real service -> Prometheus metrics -> telemetry adapter -> beliefs -> BDI reasoning -> release, rollback, pause, or stop
 ```
 
-Run all scenarios:
+The important research idea is:
 
-```sh
-./simulation/scenario_runner.sh --all
+```text
+Keep the CI/CD action interface simple, but make the release decision more context-aware.
 ```
 
-On Windows PowerShell, use Git Bash if plain `bash` points to WSL:
+## What This App Does
+
+The demo application is a small fake payment service.
+
+It exposes:
+
+```text
+GET  /health
+POST /pay
+POST /refund
+GET  /metrics
+```
+
+It does not connect to a real payment provider. It exists to generate realistic operational telemetry:
+
+```text
+request count
+error count
+latency
+availability
+stable/candidate version labels
+```
+
+Prometheus scrapes those metrics. The telemetry adapter converts them into raw telemetry values. The belief mapper converts those values into symbolic BDI beliefs.
+
+## Architecture
+
+```text
+app/payment_service
+  /health /pay /refund /metrics
+       |
+       v
+Prometheus
+       |
+       v
+telemetry/prometheus_adapter.py
+       |
+       v
+telemetry/belief_mapper.py
+       |
+       v
+bdi/run_agent_for_scenario.sh
+       |
+       v
+experiments/real_results/*.json
+experiments/real_comparison_table.md
+```
+
+The traditional action interface remains:
+
+```text
+cicd/actions/*.sh
+```
+
+## Main Folders
+
+| Path | Purpose |
+| --- | --- |
+| `app/payment_service/` | Flask payment service with Prometheus metrics and optional OpenTelemetry tracing |
+| `cicd/actions/` | Public shell action interface used by traditional and BDI flows |
+| `runtime/prometheus/` | Prometheus scrape configuration |
+| `telemetry/` | Prometheus adapter, belief mapper, thresholds, tests |
+| `bdi/` | Jason/AgentSpeak model and deterministic BDI trace runner |
+| `experiments/` | Simulated and real-telemetry experiment runners and outputs |
+| `.github/workflows/` | GitHub Actions traditional CI baseline |
+| `docs/` | Longer explanation documents |
+| `0_private/` | Private notes and roadmap files |
+
+## Prerequisites
+
+Recommended:
+
+```text
+Python 3.12
+Docker Desktop
+Git Bash on Windows
+PowerShell
+```
+
+On this Windows machine, use `py` instead of `python` if `python` is not on PATH.
+
+## Quick Start
+
+Start the real local runtime:
 
 ```powershell
-& 'C:\Program Files\Git\bin\bash.exe' simulation/scenario_runner.sh --all
-```
-
-The runner executes real Phase 1 actions when a scenario stage is marked `passed`, records simulated failures when a stage is marked `failed`, and writes JSON logs for later telemetry-to-belief mapping and BDI reasoning phases.
-
-## Phase 3: Telemetry To Beliefs
-
-Phase 3 maps Phase 2 event logs into symbolic beliefs for later BDI reasoning.
-
-Generate belief files from all scenario logs:
-
-```sh
-./telemetry/belief_mapper.sh
-```
-
-On Windows PowerShell:
-
-```powershell
-python telemetry/belief_mapper.py
-```
-
-Run threshold tests:
-
-```powershell
-python telemetry/test_belief_mapper.py
-```
-
-Generated beliefs are written to `telemetry/generated_beliefs/`.
-
-## Phase 4: First BDI Agent
-
-Phase 4 adds a first Jason/AgentSpeak release agent:
-
-```text
-bdi/cicd_agent.asl
-bdi/project.mas2j
-```
-
-Prepare one scenario-specific agent:
-
-```sh
-./bdi/run_agent_for_scenario.sh success_stable
-```
-
-The runner prints the modeled BDI trace from the scenario beliefs and generates Jason files under `bdi/generated/`.
-
-The BDI goal model and expected scenario decisions are documented in:
-
-```text
-docs/bdi_goal_model.md
-```
-
-## Phase 5: Experiment Results
-
-Run all scenarios, regenerate beliefs, run BDI traces, and compile comparable results:
-
-```sh
-./experiments/run_all_scenarios.sh
-```
-
-Outputs:
-
-```text
-experiments/results/*.json
-experiments/comparison_table.md
-```
-
-## Phase 6: Upgrade Hooks
-
-Phase 6 documents lightweight extension points for future research:
-
-```text
-docs/upgrades.md
-upgrade_hooks/
-```
-
-The hooks cover future monitoring adapters, CI platform executors, dataset-generated scenarios, failure-risk beliefs, and multi-agent extensions. They are stubs only; no heavy external integration is implemented.
-
-## Phase 7: Real Payment Service With Metrics
-
-Phase 7 adds a small Flask payment service under `app/payment_service/`. It does not replace the CI/CD shell action interface yet; later phases can deploy and scrape this service.
-
-Run locally:
-
-```sh
-cd app/payment_service
-python -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-python service.py
-```
-
-On Windows PowerShell:
-
-```powershell
-cd app/payment_service
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python service.py
-```
-
-Smoke test:
-
-```sh
-curl http://localhost:8000/health
-curl -X POST http://localhost:8000/pay -H "Content-Type: application/json" -d '{"amount": 10}'
-curl -X POST http://localhost:8000/refund -H "Content-Type: application/json" -d '{"amount": 10}'
-curl http://localhost:8000/metrics
-```
-
-Useful environment variables:
-
-| Variable | Example | Purpose |
-| --- | --- | --- |
-| `SERVICE_VERSION` | `stable` or `candidate` | Adds a stable version label to service responses and metrics |
-| `FORCE_ERROR_RATE` | `0.25` | Randomly fails about 25% of `/pay` and `/refund` requests |
-| `FAILURE_MODE` | `always_error`, `pay_error`, `refund_error`, or `unhealthy` | Forces deterministic failure modes for scenarios |
-| `EXTRA_LATENCY_MS` | `500` | Adds fixed latency to health and payment endpoints |
-| `PORT` | `8000` | Selects the local HTTP port |
-
-Docker is optional for this phase:
-
-```sh
-docker build -t bdi-payment-service app/payment_service
-docker run --rm -p 8000:8000 -e SERVICE_VERSION=candidate bdi-payment-service
-```
-
-The Prometheus-compatible metrics endpoint is available at:
-
-```text
-http://localhost:8000/metrics
-```
-
-## Phase 8: Local Docker Compose Runtime
-
-Phase 8 runs two local payment service instances and Prometheus. This keeps the prototype local and explainable while making telemetry collection real.
-
-Services:
-
-| Service | Version | Local URL | Purpose |
-| --- | --- | --- | --- |
-| `payment-staging` | `candidate` | `http://localhost:8001` | Candidate release target |
-| `payment-production` | `stable` | `http://localhost:8002` | Production baseline |
-| `prometheus` | n/a | `http://localhost:9090` | Scrapes service metrics |
-
-Start the local runtime:
-
-```sh
 docker compose up --build
 ```
 
-On Windows PowerShell, test the running services:
+Check services:
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing http://localhost:8001/health
@@ -223,102 +123,23 @@ Invoke-WebRequest -UseBasicParsing http://localhost:8002/health
 Invoke-WebRequest -UseBasicParsing http://localhost:9090/-/ready
 ```
 
-Open the Prometheus targets page:
+Open Prometheus targets:
 
 ```text
 http://localhost:9090/targets
 ```
 
-Expected targets:
+Expected services:
 
-```text
-payment-staging
-payment-production
-```
+| Service | URL | Meaning |
+| --- | --- | --- |
+| staging payment service | `http://localhost:8001` | Candidate version |
+| production payment service | `http://localhost:8002` | Stable or candidate version |
+| Prometheus | `http://localhost:9090` | Metrics store/query UI |
 
-Both should show as `UP` after Prometheus has had a few seconds to scrape them.
+## Run The Traditional Action Interface
 
-Direct metrics endpoints:
-
-```text
-http://localhost:8001/metrics
-http://localhost:8002/metrics
-```
-
-Stop the local runtime:
-
-```sh
-docker compose down
-```
-
-The Compose file keeps failure and latency controls explicit. To simulate a bad candidate, edit the `payment-staging` environment values in `docker-compose.yml`, for example:
-
-```yaml
-FAILURE_MODE: pay_error
-EXTRA_LATENCY_MS: "500"
-```
-
-Then restart:
-
-```sh
-docker compose up --build
-```
-
-## Phase 9: CI/CD Actions Target Local Services
-
-Phase 9 keeps the public action interface shell-callable, but points deployment and health checks at the Docker Compose services from Phase 8.
-
-The command shape is unchanged:
-
-```sh
-./cicd/actions/build.sh candidate
-./cicd/actions/test.sh candidate
-./cicd/actions/security_scan.sh candidate
-./cicd/actions/deploy.sh staging candidate
-./cicd/actions/health_check.sh staging
-./cicd/actions/deploy.sh production candidate
-./cicd/actions/health_check.sh production
-./cicd/actions/rollback.sh production
-```
-
-What each action now does:
-
-| Action | Real-service behavior |
-| --- | --- |
-| `build.sh VERSION` | Builds the local payment service Docker image when Docker Compose is available |
-| `test.sh VERSION` | Validates Compose config, Python syntax, expected API routes, and metric names |
-| `security_scan.sh VERSION` | Scans owned service/runtime files for simple secret patterns |
-| `deploy.sh staging VERSION` | Starts or recreates `payment-staging` with `SERVICE_VERSION=VERSION` |
-| `deploy.sh production VERSION` | Starts or recreates `payment-production` with `SERVICE_VERSION=VERSION` |
-| `health_check.sh ENVIRONMENT` | Calls the real `/health` endpoint on port `8001` or `8002` |
-| `rollback.sh production` | Recreates production with `SERVICE_VERSION=stable` |
-
-Runtime state is still recorded under:
-
-```text
-runtime/state/
-```
-
-Useful files include:
-
-```text
-runtime/state/staging_version.txt
-runtime/state/production_version.txt
-runtime/state/previous_production_version.txt
-runtime/state/staging_health_checked_at.txt
-runtime/state/production_health_checked_at.txt
-```
-
-If Docker is unavailable:
-
-```text
-build.sh can still validate local service files and Python syntax.
-test.sh can still run local Python and source checks.
-security_scan.sh can still scan owned service/runtime files.
-deploy.sh, health_check.sh, and rollback.sh require Docker Compose because they operate on real local services.
-```
-
-On Windows PowerShell, run the shell scripts through Git Bash:
+On Windows PowerShell, run shell scripts through Git Bash:
 
 ```powershell
 & 'C:\Program Files\Git\bin\bash.exe' cicd/actions/build.sh candidate
@@ -326,16 +147,67 @@ On Windows PowerShell, run the shell scripts through Git Bash:
 & 'C:\Program Files\Git\bin\bash.exe' cicd/actions/security_scan.sh candidate
 & 'C:\Program Files\Git\bin\bash.exe' cicd/actions/deploy.sh staging candidate
 & 'C:\Program Files\Git\bin\bash.exe' cicd/actions/health_check.sh staging
+& 'C:\Program Files\Git\bin\bash.exe' cicd/actions/deploy.sh production candidate
+& 'C:\Program Files\Git\bin\bash.exe' cicd/actions/health_check.sh production
 ```
 
-## Phase 12: Real Telemetry Experiments
+Rollback production:
 
-Phase 12 runs real local CI/CD actions, generates payment traffic, queries Prometheus, maps telemetry into BDI beliefs, and records comparable experiment results.
+```powershell
+& 'C:\Program Files\Git\bin\bash.exe' cicd/actions/rollback.sh production
+```
 
-Run:
+## Run Real-Telemetry BDI Experiments
+
+The richer Phase 15 scenario catalog is defined in:
+
+```text
+experiments/real_scenarios.yml
+```
+
+It describes the intended real telemetry experiments using simple human-readable fields:
+
+```text
+description
+environment settings for staging and production
+traffic pattern
+observation count
+reobserve expectation
+traditional expected decision
+BDI expected decision
+what the scenario proves
+```
+
+Defined scenarios:
+
+| Scenario | What it proves | Expected BDI decision |
+| --- | --- | --- |
+| `real_success` | Healthy telemetry baseline where traditional CI/CD and BDI agree | `release_complete` |
+| `real_high_error_rate` | `/health` passes while business traffic fails | `rollback_production` |
+| `real_high_latency` | Successful requests can still be degraded enough to reobserve | `pause_reobserve` |
+| `real_low_availability` | Unhealthy production should trigger rollback | `rollback_production` |
+| `real_transient_recovery` | BDI can pause and avoid rollback after telemetry recovers | `release_complete` |
+| `real_network_suspected` | Ambiguous network context should cause reobservation | `pause_reobserve` |
+| `real_staging_failure` | Failed staging blocks production promotion | `stop_pipeline` |
+| `real_security_scan_failure` | Failed security scan blocks deployment | `stop_pipeline` |
+
+The real telemetry runner reads this file directly. Run all configured scenarios:
 
 ```powershell
 & 'C:\Program Files\Git\bin\bash.exe' experiments/run_real_telemetry_scenarios.sh
+```
+
+Run one scenario by name:
+
+```powershell
+py experiments/real_telemetry_runner.py real_high_error_rate
+& 'C:\Program Files\Git\bin\bash.exe' experiments/run_real_telemetry_scenarios.sh real_high_error_rate
+```
+
+List available real telemetry scenarios:
+
+```powershell
+py experiments/real_telemetry_runner.py --list
 ```
 
 Outputs:
@@ -345,50 +217,169 @@ experiments/real_results/*.json
 experiments/real_comparison_table.md
 ```
 
-The runner currently includes:
-
-| Scenario | Purpose |
-| --- | --- |
-| `real_success` | Healthy candidate release with stable Prometheus telemetry |
-| `real_production_unstable` | `/health` passes, but `/pay` failures make Prometheus-derived beliefs unstable |
-
-Read the comparison table:
+Read the summary table:
 
 ```powershell
 Get-Content experiments/real_comparison_table.md
 ```
 
-The unstable real scenario demonstrates why BDI telemetry reasoning is useful: traditional CI/CD sees passing shell actions and health checks, while BDI sees `environment(production, unstable).` from real payment metrics and chooses rollback.
+The original key real-telemetry scenario is still supported as a compatibility scenario:
 
-## Phase 13: GitHub Actions Baseline
+```text
+real_production_unstable
+```
 
-Phase 13 adds a simple traditional CI workflow:
+In that scenario:
+
+```text
+/health passes
+/pay fails
+Prometheus records payment errors
+belief_mapper.py creates environment(production, unstable).
+BDI chooses rollback_production
+```
+
+This demonstrates that BDI can react to real telemetry that a simple health-check-only traditional pipeline can miss.
+
+## Run Simulated Experiments
+
+The older simulated path is still available:
+
+```powershell
+& 'C:\Program Files\Git\bin\bash.exe' experiments/run_all_scenarios.sh
+```
+
+Outputs:
+
+```text
+experiments/results/*.json
+experiments/comparison_table.md
+```
+
+## Prometheus Telemetry
+
+Generate production traffic:
+
+```powershell
+Invoke-RestMethod -Method POST -Uri http://localhost:8002/pay -ContentType "application/json" -Body '{"amount": 10}'
+Invoke-RestMethod -Method POST -Uri http://localhost:8002/refund -ContentType "application/json" -Body '{"amount": 10}'
+```
+
+Query telemetry:
+
+```powershell
+py telemetry/prometheus_adapter.py production --pretty
+```
+
+Map adapter JSON into BDI beliefs:
+
+```powershell
+py telemetry/prometheus_adapter.py production --pretty | Out-File -Encoding utf8 telemetry/live_production.json
+py telemetry/belief_mapper.py telemetry/live_production.json
+Get-Content telemetry/generated_beliefs/production_live.asl
+```
+
+## How BDI Works Here
+
+The BDI runner consumes symbolic beliefs like:
+
+```prolog
+status(build, passed).
+status(health_check(production), passed).
+metric(production, error_rate, high).
+environment(production, unstable).
+rollback_available(production).
+```
+
+Then it chooses a decision such as:
+
+```text
+release_complete
+rollback_production
+pause_reobserve
+stop_pipeline
+manual_intervention_required
+```
+
+For this prototype, `bdi/run_agent_for_scenario.sh` prints a deterministic modeled BDI trace and also generates Jason files under `bdi/generated/`.
+
+## GitHub Actions Baseline
+
+The workflow:
 
 ```text
 .github/workflows/traditional-ci.yml
 ```
 
-It runs on push and pull request, then calls the same public shell action interface used locally:
-
-```sh
-./cicd/actions/build.sh candidate
-./cicd/actions/test.sh candidate
-./cicd/actions/security_scan.sh candidate
-```
-
-What it proves:
+runs:
 
 ```text
-The repository has a visible traditional CI baseline.
-The public shell action interface works in GitHub Actions.
-The payment service can be built, checked, and scanned outside the local experiment runner.
+build.sh candidate
+test.sh candidate
+security_scan.sh candidate
 ```
 
-What it does not prove:
+It proves that the project has a visible traditional CI baseline using the same shell action interface.
+
+It does not deploy to cloud, run the BDI agent, use GitHub as the BDI control plane, or replace local experiments.
+
+## Optional OpenTelemetry
+
+Prometheus is the primary telemetry path. OpenTelemetry is only an optional reference.
+
+Enable console tracing:
+
+```powershell
+$env:ENABLE_OTEL="true"
+py app/payment_service/service.py
+```
+
+Call:
+
+```powershell
+Invoke-RestMethod -Method POST -Uri http://localhost:8000/pay -ContentType "application/json" -Body '{"amount": 10}'
+```
+
+The service console prints OpenTelemetry span JSON for the payment operation.
+
+## What This Prototype Can Prove
+
+This prototype can show:
 
 ```text
-It does not deploy to cloud.
-It does not use GitHub as the BDI control plane.
-It does not run the real telemetry experiment comparison.
-It does not replace local Docker Compose, Prometheus, or Jason/BDI reasoning.
+Traditional CI/CD can pass when /health is OK.
+Real payment traffic can still fail even when /health is OK.
+Prometheus can expose those failures as metrics.
+Metrics can be converted into symbolic beliefs.
+BDI can choose rollback based on telemetry-derived beliefs.
+The old simulated scenario path still works.
+```
+
+This prototype does not claim:
+
+```text
+full production readiness
+real payment processing
+cloud deployment
+Kubernetes orchestration
+machine learning prediction
+GitHub-controlled BDI automation
+multi-agent coordination
+```
+
+## More Reading
+
+Start with:
+
+```text
+docs/pipeline_explanation.md
+telemetry/README.md
+bdi/README.md
+experiments/real_comparison_table.md
+```
+
+Private explanatory notes are under:
+
+```text
+0_private/
 ```

@@ -13,6 +13,8 @@ runtime/prometheus/*
 
 # Generated BDI scenario agents and Jason/Gradle cache
 bdi/generated/
+bdi/.stop___MAS
+bdi/build/
 **/.gradle/
 
 # Python cache and test cache
@@ -24,6 +26,9 @@ __pycache__/
 .venv/
 venv/
 env/
+!bdi/src/
+!bdi/src/env/
+!bdi/src/env/*.java
 
 # Local logs and temporary files
 *.log

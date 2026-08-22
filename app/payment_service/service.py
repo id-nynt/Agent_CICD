@@ -4,6 +4,10 @@ import time
 from typing import Any
 
 from flask import Flask, jsonify, request
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 
@@ -11,6 +15,7 @@ SERVICE_VERSION = os.getenv("SERVICE_VERSION", "stable").strip().lower()
 FAILURE_MODE = os.getenv("FAILURE_MODE", "none").strip().lower()
 FORCE_ERROR_RATE = float(os.getenv("FORCE_ERROR_RATE", "0") or 0)
 EXTRA_LATENCY_MS = int(os.getenv("EXTRA_LATENCY_MS", "0") or 0)
+ENABLE_OTEL = os.getenv("ENABLE_OTEL", "false").strip().lower() == "true"
 
 if SERVICE_VERSION not in {"stable", "candidate"}:
     SERVICE_VERSION = "stable"
@@ -19,6 +24,21 @@ FORCE_ERROR_RATE = min(max(FORCE_ERROR_RATE, 0.0), 1.0)
 EXTRA_LATENCY_SECONDS = max(EXTRA_LATENCY_MS, 0) / 1000
 
 app = Flask(__name__)
+
+if ENABLE_OTEL:
+    trace.set_tracer_provider(
+        TracerProvider(
+            resource=Resource.create(
+                {
+                    "service.name": "payment-service",
+                    "service.version": SERVICE_VERSION,
+                }
+            )
+        )
+    )
+    trace.get_tracer_provider().add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+
+TRACER = trace.get_tracer("payment-service")
 
 REQUEST_COUNT = Counter(
     "payment_service_requests_total",
@@ -69,36 +89,47 @@ def record(endpoint: str, status: int, started_at: float) -> None:
 def payment_response(operation: str, payload: dict[str, Any] | None) -> tuple[Any, int]:
     started_at = time.time()
     endpoint = f"/{operation}"
-    apply_latency()
+    with TRACER.start_as_current_span(f"payment.{operation}") as span:
+        span.set_attribute("payment.operation", operation)
+        span.set_attribute("payment.version", SERVICE_VERSION)
+        span.set_attribute("payment.failure_mode", FAILURE_MODE)
+        if payload and payload.get("amount") is not None:
+            span.set_attribute("payment.amount", payload["amount"])
 
-    if should_fail(operation):
-        status = 500
+        apply_latency()
+
+        if should_fail(operation):
+            status = 500
+            span.set_attribute("http.status_code", status)
+            span.set_attribute("payment.outcome", "error")
+            record(endpoint, status, started_at)
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "operation": operation,
+                        "version": SERVICE_VERSION,
+                        "message": "failure injected for prototype telemetry",
+                    }
+                ),
+                status,
+            )
+
+        status = 200
+        span.set_attribute("http.status_code", status)
+        span.set_attribute("payment.outcome", "success")
         record(endpoint, status, started_at)
         return (
             jsonify(
                 {
-                    "status": "error",
+                    "status": "success",
                     "operation": operation,
                     "version": SERVICE_VERSION,
-                    "message": "failure injected for prototype telemetry",
+                    "amount": (payload or {}).get("amount"),
                 }
             ),
             status,
         )
-
-    status = 200
-    record(endpoint, status, started_at)
-    return (
-        jsonify(
-            {
-                "status": "success",
-                "operation": operation,
-                "version": SERVICE_VERSION,
-                "amount": (payload or {}).get("amount"),
-            }
-        ),
-        status,
-    )
 
 
 @app.get("/health")

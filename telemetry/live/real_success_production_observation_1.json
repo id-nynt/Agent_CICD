@@ -9,7 +9,7 @@
   "source": "prometheus",
   "telemetry": {
     "availability": 1.0,
-    "error_rate": 1.0,
+    "error_rate": 0.0,
     "latency_p95_ms": 4.75
   },
   "window": "5m"

@@ -16,4 +16,4 @@ run_python() {
   fi
 }
 
-run_python "$ROOT_DIR/experiments/real_telemetry_runner.py"
+run_python "$ROOT_DIR/experiments/real_telemetry_runner.py" "$@"
