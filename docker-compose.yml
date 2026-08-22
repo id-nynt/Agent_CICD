@@ -1,0 +1,49 @@
+services:
+  payment-staging:
+    build:
+      context: ./app/payment_service
+    container_name: payment-staging
+    environment:
+      SERVICE_VERSION: ${PAYMENT_STAGING_VERSION:-candidate}
+      FAILURE_MODE: ${PAYMENT_STAGING_FAILURE_MODE:-none}
+      FORCE_ERROR_RATE: ${PAYMENT_STAGING_FORCE_ERROR_RATE:-0}
+      EXTRA_LATENCY_MS: ${PAYMENT_STAGING_EXTRA_LATENCY_MS:-0}
+      PORT: "8000"
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  payment-production:
+    build:
+      context: ./app/payment_service
+    container_name: payment-production
+    environment:
+      SERVICE_VERSION: ${PAYMENT_PRODUCTION_VERSION:-stable}
+      FAILURE_MODE: ${PAYMENT_PRODUCTION_FAILURE_MODE:-none}
+      FORCE_ERROR_RATE: ${PAYMENT_PRODUCTION_FORCE_ERROR_RATE:-0}
+      EXTRA_LATENCY_MS: ${PAYMENT_PRODUCTION_EXTRA_LATENCY_MS:-0}
+      PORT: "8000"
+    ports:
+      - "8002:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    depends_on:
+      - payment-staging
+      - payment-production
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./runtime/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro

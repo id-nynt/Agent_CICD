@@ -30,6 +30,19 @@ These logs are produced by:
 ./simulation/scenario_runner.sh --all
 ```
 
+The mapper can also read Prometheus adapter JSON shaped like:
+
+```json
+{
+  "environment": "production",
+  "telemetry": {
+    "availability": 1.0,
+    "error_rate": 0.0,
+    "latency_p95_ms": 25.0
+  }
+}
+```
+
 ## Thresholds
 
 Threshold rules live in:
@@ -77,10 +90,23 @@ Generate beliefs directly from one scenario file:
 ./telemetry/belief_mapper.sh simulation/scenarios/production_unstable.yml
 ```
 
+Generate beliefs from live Prometheus adapter JSON:
+
+```powershell
+py telemetry/prometheus_adapter.py production --pretty | Out-File -Encoding utf8 telemetry/live_production.json
+py telemetry/belief_mapper.py telemetry/live_production.json
+```
+
+This writes:
+
+```text
+telemetry/generated_beliefs/production_live.asl
+```
+
 On Windows PowerShell, use:
 
 ```powershell
-python telemetry/belief_mapper.py
+py telemetry/belief_mapper.py
 ```
 
 Outputs are written to:
@@ -97,6 +123,76 @@ python telemetry/test_belief_mapper.py
 
 The tests verify normal metrics, bad metrics, and strict threshold boundaries.
 
+## Prometheus Adapter
+
+Phase 10 adds a small Prometheus adapter:
+
+```text
+telemetry/prometheus_adapter.py
+```
+
+It queries the local Prometheus HTTP API and emits the same raw telemetry field names used by the simulated scenarios:
+
+```json
+{
+  "environment": "production",
+  "source": "prometheus",
+  "telemetry": {
+    "availability": 1.0,
+    "error_rate": 0.0,
+    "latency_p95_ms": 25.0
+  }
+}
+```
+
+Start the local runtime first:
+
+```sh
+docker compose up --build
+```
+
+Generate a little traffic so Prometheus has request metrics to scrape:
+
+```powershell
+Invoke-RestMethod -Method POST -Uri http://localhost:8002/pay -ContentType "application/json" -Body '{"amount": 10}'
+Invoke-RestMethod -Method POST -Uri http://localhost:8002/refund -ContentType "application/json" -Body '{"amount": 10}'
+```
+
+Query production telemetry:
+
+```powershell
+py telemetry/prometheus_adapter.py production --pretty
+```
+
+Query staging telemetry:
+
+```powershell
+py telemetry/prometheus_adapter.py staging --pretty
+```
+
+Useful direct Prometheus check:
+
+```powershell
+Invoke-RestMethod "http://localhost:9090/api/v1/query?query=up"
+```
+
+Run adapter tests:
+
+```powershell
+py telemetry/test_prometheus_adapter.py
+```
+
+The adapter does not change the belief format. The belief mapper can map adapter JSON directly into live environment beliefs such as:
+
+```prolog
+telemetry_source(prometheus).
+telemetry_environment(production).
+metric(production, error_rate, normal).
+metric(production, latency, normal).
+metric(production, availability, high).
+environment(production, stable).
+```
+
 ## Scope
 
-This phase does not connect to Prometheus, OpenTelemetry, Kubernetes, GitHub APIs, Jason, or ML. It is a local mapping layer for explainable research experiments.
+This telemetry layer does not add Alertmanager, OpenTelemetry, Kubernetes, GitHub APIs, Jason plan changes, or ML. It keeps raw telemetry and symbolic beliefs separate for explainable research experiments.

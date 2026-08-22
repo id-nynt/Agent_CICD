@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Map Phase 2 scenario data or event logs into symbolic BDI beliefs."""
+"""Map scenario, event-log, or Prometheus adapter telemetry into BDI beliefs."""
 
 from __future__ import annotations
 
@@ -80,7 +80,11 @@ def status_name(action_name: str) -> str:
     return mapping.get(action_name, action_name)
 
 
-def classify_telemetry(telemetry: dict[str, float], thresholds: dict[str, float]) -> tuple[list[str], bool]:
+def classify_telemetry(
+    telemetry: dict[str, float],
+    thresholds: dict[str, float],
+    environment: str = "production",
+) -> tuple[list[str], bool]:
     beliefs: list[str] = []
 
     error_rate = float(telemetry["error_rate"])
@@ -91,9 +95,9 @@ def classify_telemetry(telemetry: dict[str, float], thresholds: dict[str, float]
     latency_state = "high" if latency > thresholds["latency_p95_ms_high_gt"] else "normal"
     availability_state = "low" if availability < thresholds["availability_low_lt"] else "high"
 
-    beliefs.append(f"metric(production, error_rate, {error_state}).")
-    beliefs.append(f"metric(production, latency, {latency_state}).")
-    beliefs.append(f"metric(production, availability, {availability_state}).")
+    beliefs.append(f"metric({environment}, error_rate, {error_state}).")
+    beliefs.append(f"metric({environment}, latency, {latency_state}).")
+    beliefs.append(f"metric({environment}, availability, {availability_state}).")
 
     production_unstable = (
         error_state == "high"
@@ -140,6 +144,33 @@ def map_log_to_beliefs(log: dict, thresholds: dict[str, float]) -> list[str]:
     if any(action["name"] == "rollback_production" for action in log["actions"]):
         beliefs.append("rollback_available(production).")
 
+    return beliefs
+
+
+def is_adapter_json(data: dict) -> bool:
+    telemetry = data.get("telemetry")
+    return (
+        isinstance(telemetry, dict)
+        and "environment" in data
+        and "scenario" not in data
+        and {"error_rate", "latency_p95_ms", "availability"}.issubset(telemetry)
+    )
+
+
+def map_adapter_to_beliefs(data: dict, thresholds: dict[str, float]) -> list[str]:
+    environment = str(data["environment"])
+    if environment not in {"staging", "production"}:
+        raise ValueError("adapter environment must be staging or production")
+
+    metric_beliefs, unstable = classify_telemetry(data["telemetry"], thresholds, environment)
+    environment_state = "unstable" if unstable else "stable"
+
+    beliefs = [
+        f"telemetry_source({data.get('source', 'prometheus')}).",
+        f"telemetry_environment({environment}).",
+    ]
+    beliefs.extend(metric_beliefs)
+    beliefs.append(f"environment({environment}, {environment_state}).")
     return beliefs
 
 
@@ -223,14 +254,32 @@ def find_action_status(log: dict, action_name: str) -> str:
     return "not_run"
 
 
+def read_json_file(path: Path) -> dict:
+    raw = path.read_bytes()
+    for encoding in ("utf-8", "utf-8-sig", "utf-16"):
+        try:
+            return json.loads(raw.decode(encoding))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    raise ValueError(f"could not read JSON from {path}")
+
+
 def write_belief_file(input_file: Path, output_dir: Path, thresholds: dict[str, float]) -> Path:
     if input_file.suffix.lower() in {".yml", ".yaml"}:
         log = scenario_to_log(read_simple_yaml(input_file))
+        beliefs = map_log_to_beliefs(log, thresholds)
+        output_name = log["scenario"]
     else:
-        log = json.loads(input_file.read_text(encoding="utf-8"))
-    beliefs = map_log_to_beliefs(log, thresholds)
+        data = read_json_file(input_file)
+        if is_adapter_json(data):
+            beliefs = map_adapter_to_beliefs(data, thresholds)
+            output_name = f"{data['environment']}_live"
+        else:
+            log = data
+            beliefs = map_log_to_beliefs(log, thresholds)
+            output_name = log["scenario"]
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / f"{log['scenario']}.asl"
+    output_file = output_dir / f"{output_name}.asl"
     output_file.write_text("\n".join(beliefs) + "\n", encoding="utf-8")
     return output_file
 
@@ -242,8 +291,8 @@ def input_files(path: Path) -> list[Path]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Map scenario YAML files or event log JSON files into BDI belief files.")
-    parser.add_argument("input", nargs="?", default=str(DEFAULT_LOG_DIR), help="Scenario YAML, event log JSON, or directory.")
+    parser = argparse.ArgumentParser(description="Map scenario YAML, event log JSON, or Prometheus adapter JSON into BDI belief files.")
+    parser.add_argument("input", nargs="?", default=str(DEFAULT_LOG_DIR), help="Scenario YAML, event log JSON, Prometheus adapter JSON, or directory.")
     parser.add_argument("--thresholds", default=str(DEFAULT_THRESHOLDS), help="Threshold configuration file.")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Directory for generated .asl beliefs.")
     args = parser.parse_args()

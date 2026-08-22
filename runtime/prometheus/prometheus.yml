@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: payment-staging
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - payment-staging:8000
+        labels:
+          environment: staging
+
+  - job_name: payment-production
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - payment-production:8000
+        labels:
+          environment: production

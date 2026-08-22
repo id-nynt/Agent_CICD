@@ -4,7 +4,6 @@ set -euo pipefail
 ENVIRONMENT="${1:-}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 STATE_DIR="$ROOT_DIR/runtime/state"
-DEPLOY_DIR="$ROOT_DIR/runtime/deployments/production"
 
 if [ -z "$ENVIRONMENT" ]; then
   echo "[rollback] FAIL: environment required"
@@ -16,25 +15,28 @@ if [ "$ENVIRONMENT" != "production" ]; then
   exit 1
 fi
 
-if [ ! -f "$STATE_DIR/previous_production_version.txt" ]; then
-  echo "[rollback] FAIL: previous production version is unknown"
+if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+  echo "[rollback] FAIL: Docker Compose is required to rollback the real local service"
   exit 1
 fi
 
-PREVIOUS_VERSION="$(tr -d '\r\n' < "$STATE_DIR/previous_production_version.txt")"
-APP_VERSION_DIR="$ROOT_DIR/app/versions/$PREVIOUS_VERSION"
+ROLLBACK_VERSION="stable"
 
-if [ ! -d "$APP_VERSION_DIR" ]; then
-  echo "[rollback] FAIL: app/versions/$PREVIOUS_VERSION does not exist"
-  exit 1
+mkdir -p "$STATE_DIR"
+
+if [ -f "$STATE_DIR/production_version.txt" ]; then
+  cp "$STATE_DIR/production_version.txt" "$STATE_DIR/previous_production_version.txt"
 fi
 
-mkdir -p "$DEPLOY_DIR" "$STATE_DIR"
-rm -rf "$DEPLOY_DIR"/*
-cp "$APP_VERSION_DIR/config.json" "$DEPLOY_DIR/"
-cp "$APP_VERSION_DIR/health.txt" "$DEPLOY_DIR/"
-cp "$APP_VERSION_DIR/index.html" "$DEPLOY_DIR/"
+export PAYMENT_PRODUCTION_VERSION="$ROLLBACK_VERSION"
+export PAYMENT_PRODUCTION_FAILURE_MODE="${PAYMENT_PRODUCTION_FAILURE_MODE:-none}"
+export PAYMENT_PRODUCTION_FORCE_ERROR_RATE="${PAYMENT_PRODUCTION_FORCE_ERROR_RATE:-0}"
+export PAYMENT_PRODUCTION_EXTRA_LATENCY_MS="${PAYMENT_PRODUCTION_EXTRA_LATENCY_MS:-0}"
 
-printf '%s\n' "$PREVIOUS_VERSION" > "$STATE_DIR/production_version.txt"
+docker compose -f "$ROOT_DIR/docker-compose.yml" up -d --no-deps --build payment-production
+docker compose -f "$ROOT_DIR/docker-compose.yml" up -d --no-deps prometheus
 
-echo "[rollback] PASS: restored production to $PREVIOUS_VERSION"
+printf '%s\n' "$ROLLBACK_VERSION" > "$STATE_DIR/production_version.txt"
+printf '%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > "$STATE_DIR/production_rolled_back_at.txt"
+
+echo "[rollback] PASS: restored production to $ROLLBACK_VERSION"

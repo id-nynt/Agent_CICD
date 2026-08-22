@@ -1,0 +1,16 @@
+{
+  "environment": "production",
+  "prometheus_url": "http://localhost:9090",
+  "queries": {
+    "availability": "avg(payment_service_health{environment=\"production\"})",
+    "error_rate": "sum(payment_service_errors_total{environment=\"production\",endpoint=~\"/pay|/refund\"}) / clamp_min(sum(payment_service_requests_total{environment=\"production\",endpoint=~\"/pay|/refund\"}), 1)",
+    "latency_p95_ms": "histogram_quantile(0.95, sum by (le) (payment_service_request_latency_seconds_bucket{environment=\"production\",endpoint=~\"/pay|/refund\"})) * 1000"
+  },
+  "source": "prometheus",
+  "telemetry": {
+    "availability": 1.0,
+    "error_rate": 0.5,
+    "latency_p95_ms": 4.75
+  },
+  "window": "5m"
+}
