@@ -1,6 +1,6 @@
-# First BDI CI/CD Agent
+# Jason BDI CI/CD Runtime
 
-Phase 4 adds a first Jason/AgentSpeak model for CI/CD release reasoning.
+This folder contains the active Jason BDI controller and the legacy static scenario scaffolding. The active runtime is `deployment_agent.asl` plus `CicdEnvironment.java`; the legacy `cicd_agent.asl` and `run_agent_for_scenario.sh` path is retained for audit/history only.
 
 Files:
 
@@ -14,7 +14,7 @@ bdi/run_agent_for_scenario.sh
 
 ## Persistent Deployment Agent
 
-`bdi/deployment_agent.asl` is the persistent controller starting point for the next architecture phase.
+`bdi/deployment_agent.asl` is the persistent controller used by the current prototype.
 
 It adopts:
 
@@ -36,7 +36,7 @@ verify production
 maintain reliability
 ```
 
-This agent uses visible `.print(...)` statements and calls real shell CI/CD actions through the plain Jason environment bridge. It does not poll telemetry yet.
+This agent uses visible `.print(...)` statements, calls real shell CI/CD actions through the plain Jason environment bridge, and reacts to Prometheus telemetry percepts while it remains alive.
 
 Run the persistent MAS:
 
@@ -231,6 +231,150 @@ $env:BDI_FORCE_ROLLBACK_PRODUCTION_FAIL="true"
 
 the expected decision path is manual intervention.
 
+## Dynamic Prometheus Telemetry Perceptions
+
+Phase 4 adds periodic Prometheus polling inside the plain Jason environment bridge. This keeps the same running `deployment_agent` alive while runtime telemetry becomes Jason percepts.
+
+The environment reads thresholds from:
+
+```text
+telemetry/thresholds.yml
+```
+
+Current threshold semantics:
+
+| Raw value | Percept state |
+| --- | --- |
+| `error_rate > 0.05` | `metric(production, error_rate, high)` |
+| `error_rate <= 0.05` | `metric(production, error_rate, normal)` |
+| `latency_p95_ms > 500` | `metric(production, latency, high)` |
+| `latency_p95_ms <= 500` | `metric(production, latency, normal)` |
+| `availability < 0.99` | `metric(production, availability, low)` |
+| `availability >= 0.99` | `metric(production, availability, high)` |
+
+Any bad telemetry state updates:
+
+```prolog
+environment(production, unstable).
+```
+
+Otherwise the environment is:
+
+```prolog
+environment(production, stable).
+```
+
+Telemetry settings:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `BDI_TELEMETRY_ENABLED` | `true` | Set to `false` to disable polling |
+| `BDI_TELEMETRY_INTERVAL_SECONDS` | `10` | Polling interval |
+| `BDI_TELEMETRY_GRACE_SECONDS` | `15` | Skip production telemetry briefly after deploy/rollback |
+| `BDI_PROMETHEUS_URL` | `http://localhost:9090` | Prometheus base URL |
+
+The grace window prevents transient Docker restart/scrape gaps from being interpreted as production regressions during deployment.
+
+Run with faster polling for local verification:
+
+```powershell
+cd bdi
+$env:BDI_TELEMETRY_INTERVAL_SECONDS="3"
+$env:BDI_TELEMETRY_GRACE_SECONDS="5"
+jason project.mas2j
+```
+
+In another terminal:
+
+```powershell
+Get-Content .\logs\cicd_environment.log -Tail 80
+jason agent mind deployment_agent
+py ..\telemetry\prometheus_adapter.py production --pretty
+```
+
+Expected log evidence:
+
+```text
+[CicdEnvironment][telemetry] thresholds error_rate_high_gt=0.05 latency_p95_ms_high_gt=500.0 availability_low_lt=0.99
+[CicdEnvironment][telemetry] polling enabled interval_seconds=3
+[CicdEnvironment][telemetry] skipped production poll during deployment grace window
+[CicdEnvironment][telemetry] production error_rate=0.0000(normal) latency_p95_ms=0.00(normal) availability=1.0000(high) environment=stable
+```
+
+Expected Jason mind evidence:
+
+```text
+metric(production,availability,high)[source(percept)]
+metric(production,error_rate,normal)[source(percept)]
+metric(production,latency,normal)[source(percept)]
+environment(production,stable)[source(percept)]
+release_monitoring_enabled(production)[source(self)]
+```
+
+The agent has a reactive plan for post-release telemetry instability:
+
+```prolog
++environment(production, unstable)
+  : release_monitoring_enabled(production)
+    & status(deploy(production), passed)
+    & not recovery_attempted(production)
+<- !recover_production(telemetry_unstable).
+```
+
+That means telemetry instability can trigger Jason recovery after the release has reached the reliability-monitoring phase.
+
+## Closed Perception-Reasoning-Action Loop
+
+Phase 5 adds a focused closed-loop demo:
+
+```powershell
+.\experiments\run_bdi_closed_loop.ps1
+```
+
+The scenario:
+
+```text
+Jason deploys candidate through CicdEnvironment
+Production /health passes
+The runner sends failing POST /pay traffic as stimulus only
+Prometheus reports high production error rate
+CicdEnvironment updates telemetry percepts
+deployment_agent reacts to environment(production, unstable)
+Jason invokes rollback(production)
+CicdEnvironment calls cicd/actions/rollback.sh production
+Rollback result becomes status(rollback(production), passed)
+```
+
+The runner does not decide rollback. It resets the local runtime, starts Jason, sends traffic, waits for evidence, and writes the result report.
+
+Expected command result:
+
+```text
+[closed_loop] PASS: Jason closed loop triggered rollback from telemetry.
+```
+
+Evidence is written to:
+
+```text
+experiments/bdi_closed_loop_results/production_telemetry_rollback.md
+```
+
+Important evidence patterns:
+
+```text
+[CicdEnvironment][telemetry] production error_rate=1.0000(high) ... environment=unstable
+[CicdEnvironment] action ... cicd\actions\rollback.sh production
+[CicdEnvironment] percept status(rollback(production), passed)
+```
+
+Expected Jason mind evidence includes:
+
+```text
+recovery_reason(telemetry_unstable)[source(self)]
+decision(rollback_production)[source(self)]
+status(rollback(production),passed)[source(percept)]
+```
+
 On the audited Windows/Jason CLI 3.3.0 setup, the MAS starts and can be confirmed with:
 
 ```powershell
@@ -306,17 +450,19 @@ telemetry/generated_beliefs/<scenario>.asl
   -> modeled trace printed by bdi/run_agent_for_scenario.sh
 ```
 
-Current persistent controller path:
+Active persistent controller path:
 
 ```text
 bdi/project.mas2j
   -> bdi/deployment_agent.asl
   -> root goal !deliver_release(candidate)
-  -> visible AgentSpeak goal/subgoal decomposition
-  -> waits for future perception/action bridge
+  -> CicdEnvironment.java
+  -> cicd/actions/*.sh
+  -> Prometheus telemetry percepts
+  -> AgentSpeak recovery / pause / stop / release plans
 ```
 
-Current experiment path:
+Legacy modeled experiment path:
 
 ```text
 experiments/compile_results.py or experiments/real_telemetry_runner.py
@@ -327,17 +473,77 @@ experiments/compile_results.py or experiments/real_telemetry_runner.py
 
 For real-telemetry experiments, `experiments/real_telemetry_runner.py` also invokes shell CI/CD actions itself. If the parsed modeled BDI decision is `rollback_production`, the Python runner invokes `cicd/actions/rollback.sh production` externally.
 
-So, at the current audited state:
+So, at the current implemented state:
 
-- Jason is not the default controller.
+- Jason is the controller for the persistent `deployment_agent` path.
 - Generated `.asl` beliefs are static scenario inputs.
-- Beliefs are not dynamically updated in a persistent running Jason agent.
-- Jason does not currently invoke the real shell CI/CD actions.
-- There is not yet a closed perception -> reasoning -> action -> new perception loop controlled by Jason.
+- The legacy scenario runner still uses static generated beliefs and modeled Bash traces.
+- The persistent `deployment_agent` path invokes real shell CI/CD actions through `CicdEnvironment`.
+- Action results and Prometheus telemetry are dynamically updated as Jason percepts in the active path.
+- The closed-loop demo proves perception -> reasoning -> action -> new perception for production rollback.
 
-The next implementation step should be a persistent Jason or JaCaMo runtime with an environment/artifact that:
+The legacy path remains useful for comparing how the project evolved, but it should not be used as evidence that Jason made runtime decisions.
 
-1. exposes CI/CD status and telemetry as perceptions;
-2. invokes the existing `cicd/actions/*.sh` scripts as actions;
-3. updates observable state while the agent remains alive;
-4. lets Jason plans, not Bash/Python decision parsing, choose release, rollback, pause/reobserve, or stop.
+## Expanded Scenario Suite
+
+Phase 6 adds a Jason-controlled scenario suite:
+
+```text
+experiments/bdi_scenario_catalog.json
+experiments/run_bdi_scenario_suite.ps1
+docs/bdi_scenario_suite.md
+```
+
+Run all scenarios:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\experiments\run_bdi_scenario_suite.ps1
+```
+
+Run one scenario:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\experiments\run_bdi_scenario_suite.ps1 -Scenario production_high_error_rate
+```
+
+The suite currently covers:
+
+```text
+success_stable
+build_failure
+test_failure
+security_failure
+staging_instability
+production_high_error_rate
+high_latency
+network_suspected
+transient_recovery
+rollback_unavailable
+```
+
+The runner only configures stimuli, sends traffic, and collects evidence. Decisions such as `stop_pipeline`, `pause_reobserve`, `rollback_production`, and `manual_intervention_required` are recorded when `deployment_agent` calls `record_decision(...)` from AgentSpeak plans.
+
+Results are written to:
+
+```text
+experiments/bdi_scenario_results/summary.md
+experiments/bdi_scenario_results/<scenario>/result.json
+experiments/bdi_scenario_results/<scenario>/summary.md
+```
+
+## Traditional vs BDI Comparison
+
+Phase 7 adds a comparison runner:
+
+```powershell
+py .\experiments\run_traditional_vs_bdi_comparison.py
+```
+
+It writes:
+
+```text
+experiments/traditional_vs_bdi_results/comparison_report.md
+experiments/traditional_vs_bdi_results/comparison_results.json
+```
+
+The traditional controller runs the fixed shell-action sequence. The BDI controller is executed through the Jason scenario suite, and the comparison runner only records the BDI evidence; it does not select BDI decisions.

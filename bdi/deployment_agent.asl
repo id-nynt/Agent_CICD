@@ -12,7 +12,26 @@ candidate(candidate).
 !start_controller.
 
 +environment(production, unstable)
-  : status(deploy(production), passed) & not recovery_attempted(production)
+  : release_monitoring_enabled(production)
+    & status(deploy(production), passed)
+    & telemetry(production, unavailable)
+    & not recovery_attempted(production)
+  <- .print("[deployment_agent][event] +environment(production, unstable) with telemetry unavailable");
+     !pause_reobserve(network_suspected).
+
++environment(production, unstable)
+  : release_monitoring_enabled(production)
+    & status(deploy(production), passed)
+    & metric(production, latency, high)
+    & not metric(production, error_rate, high)
+    & not recovery_attempted(production)
+  <- .print("[deployment_agent][event] +environment(production, unstable) with high latency");
+     !pause_reobserve(high_latency).
+
++environment(production, unstable)
+  : release_monitoring_enabled(production)
+    & status(deploy(production), passed)
+    & not recovery_attempted(production)
   <- .print("[deployment_agent][event] +environment(production, unstable)");
      !recover_production(telemetry_unstable).
 
@@ -155,6 +174,10 @@ candidate(candidate).
   : environment(production, stable)
   <- .print("[deployment_agent][goal] !maintain_reliability");
      .print("[deployment_agent][decision] release_complete");
+     record_decision(release_complete);
+     +decision(release_complete);
+     -release_monitoring_enabled(production);
+     +release_monitoring_enabled(production);
      .print("[deployment_agent] release complete");
      !keep_alive.
 
@@ -171,26 +194,116 @@ candidate(candidate).
 
 +!recover_production(Reason)
   <- .print("[deployment_agent][goal] !recover_production(", Reason, ")");
+     -release_monitoring_enabled(production);
+     record_decision(recovery_reason, Reason);
      +recovery_attempted(production);
+     +recovery_reason(Reason);
      rollback(production);
      .wait(250);
      !handle_rollback_result.
 
 +!handle_rollback_result
   : status(rollback(production), passed)
+    & recovery_reason(deploy_failed)
+    & candidate(Candidate)
+    & not production_retry_attempted(Candidate)
+  <- .print("[deployment_agent][belief] status(rollback(production), passed)");
+     .print("[deployment_agent][decision] rollback_then_retry_production");
+     record_decision(rollback_then_retry_production, deploy_failed);
+     +decision(rollback_then_retry_production);
+     +production_retry_attempted(Candidate);
+     !verify_recovered_production_before_retry(Candidate, deploy_failed).
+
++!handle_rollback_result
+  : status(rollback(production), passed)
+    & recovery_reason(health_failed)
+    & candidate(Candidate)
+    & not production_retry_attempted(Candidate)
+  <- .print("[deployment_agent][belief] status(rollback(production), passed)");
+     .print("[deployment_agent][decision] rollback_then_retry_production");
+     record_decision(rollback_then_retry_production, health_failed);
+     +decision(rollback_then_retry_production);
+     +production_retry_attempted(Candidate);
+     !verify_recovered_production_before_retry(Candidate, health_failed).
+
++!handle_rollback_result
+  : status(rollback(production), passed)
   <- .print("[deployment_agent][belief] status(rollback(production), passed)");
      .print("[deployment_agent][decision] rollback_production");
+     record_decision(rollback_production);
+     +decision(rollback_production);
      !keep_alive.
 
 +!handle_rollback_result
   : status(rollback(production), failed)
   <- .print("[deployment_agent][belief] status(rollback(production), failed)");
      .print("[deployment_agent][decision] manual_intervention_required");
+     record_decision(manual_intervention_required, rollback_failed);
+     +decision(manual_intervention_required);
      !keep_alive.
+
++!verify_recovered_production_before_retry(Candidate, Reason)
+  <- .print("[deployment_agent][subgoal] !verify_recovered_production_before_retry(", Candidate, ", ", Reason, ")");
+     health_check(production);
+     .wait(250);
+     !handle_recovered_production_before_retry(Candidate, Reason).
+
++!handle_recovered_production_before_retry(Candidate, Reason)
+  : status(health_check(production), passed) & environment(production, stable)
+  <- .print("[deployment_agent][belief] recovered production stable before retry");
+     .print("[deployment_agent][decision] continue_deploy_candidate");
+     record_decision(continue_deploy_candidate, Reason);
+     +decision(continue_deploy_candidate);
+     !deploy_to_production(Candidate);
+     !verify_production;
+     !maintain_reliability.
+
++!handle_recovered_production_before_retry(Candidate, Reason)
+  <- .print("[deployment_agent][belief] recovered production not stable before retry");
+     .print("[deployment_agent][decision] manual_intervention_required");
+     record_decision(manual_intervention_required, Reason);
+     +decision(manual_intervention_required);
+     +manual_reason(Reason);
+     !keep_alive.
+
++!pause_reobserve(Reason)
+  <- .print("[deployment_agent][goal] !pause_reobserve(", Reason, ")");
+     record_decision(pause_reobserve, Reason);
+     +decision(pause_reobserve);
+     +reobserve_reason(Reason);
+     .wait(35000);
+     !handle_reobserve_result(Reason).
+
++!handle_reobserve_result(Reason)
+  : environment(production, stable)
+  <- .print("[deployment_agent][belief] production stable after reobserve");
+     .print("[deployment_agent][decision] release_complete");
+     record_decision(reobserve_recovered, Reason);
+     record_decision(release_complete);
+     +decision(reobserve_recovered);
+     +decision(release_complete);
+     !keep_alive.
+
++!handle_reobserve_result(Reason)
+  : telemetry(production, unavailable)
+  <- .print("[deployment_agent][belief] telemetry unavailable after reobserve");
+     .print("[deployment_agent][decision] manual_intervention_required");
+     record_decision(manual_intervention_required, Reason);
+     +decision(manual_intervention_required);
+     +manual_reason(Reason);
+     !keep_alive.
+
++!handle_reobserve_result(Reason)
+  : environment(production, unstable)
+  <- .print("[deployment_agent][belief] production still unstable after reobserve");
+     !recover_production(Reason).
 
 +!stop_release(Reason)
   <- .print("[deployment_agent][decision] stop_pipeline");
      .print("[deployment_agent][reason] ", Reason);
+     record_decision(stop_pipeline, Reason);
+     +decision(stop_pipeline);
+     +stop_reason(Reason);
      !keep_alive.
 
 // Keep the MAS alive for future dynamic perception phases.

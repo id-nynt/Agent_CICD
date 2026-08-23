@@ -1,0 +1,30 @@
+﻿{
+    "id":  "high_latency",
+    "passed":  true,
+    "capability":  "Treat latency-only instability as ambiguous and pause for reobservation before recovery.",
+    "successCriteria":  "Jason chooses pause_reobserve for latency-only instability before deciding rollback.",
+    "expectedBeliefs":  [
+                            {
+                                "belief":  "metric(production,latency,high)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "decision(pause_reobserve)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "reobserve_reason(high_latency)",
+                                "observed":  true
+                            }
+                        ],
+    "forbiddenLogPatterns":  [
+
+                             ],
+    "notes":  [
+
+              ],
+    "resultFiles":  {
+                        "summary":  "summary.md",
+                        "environmentLog":  "..\\..\\..\\bdi\\logs\\cicd_environment.log"
+                    }
+}

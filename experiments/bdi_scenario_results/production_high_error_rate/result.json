@@ -1,0 +1,38 @@
+﻿{
+    "id":  "production_high_error_rate",
+    "passed":  true,
+    "capability":  "React to business-endpoint failures that pass /health by rolling back from telemetry.",
+    "successCriteria":  "Jason rolls back only after telemetry creates production instability.",
+    "expectedBeliefs":  [
+                            {
+                                "belief":  "metric(production,error_rate,high)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "environment(production,unstable)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "recovery_reason(telemetry_unstable)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "decision(rollback_production)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "status(rollback(production),passed)",
+                                "observed":  true
+                            }
+                        ],
+    "forbiddenLogPatterns":  [
+
+                             ],
+    "notes":  [
+
+              ],
+    "resultFiles":  {
+                        "summary":  "summary.md",
+                        "environmentLog":  "..\\..\\..\\bdi\\logs\\cicd_environment.log"
+                    }
+}

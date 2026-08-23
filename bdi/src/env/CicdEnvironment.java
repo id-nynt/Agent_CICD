@@ -20,6 +20,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +38,8 @@ public class CicdEnvironment extends Environment {
     private double latencyP95MsHighGt;
     private double availabilityLowLt;
     private String prometheusUrl;
+    private volatile long productionTelemetrySuspendedUntilMillis;
+    private final Set<String> oneShotForcedFailuresUsed = ConcurrentHashMap.newKeySet();
 
     @Override
     public void init(String[] args) {
@@ -88,6 +92,9 @@ public class CicdEnvironment extends Environment {
                     requireArity(action, 1);
                     runRollback(atom(action.getTerm(0)));
                     return true;
+                case "record_decision":
+                    recordDecision(action);
+                    return true;
                 default:
                     log("[CicdEnvironment] unsupported action: " + action);
                     return false;
@@ -106,7 +113,9 @@ public class CicdEnvironment extends Environment {
 
     private void runDeploy(String candidate, String environment) throws IOException, InterruptedException {
         String stage = "deploy_" + environment;
+        suspendTelemetryIfProduction(environment);
         int exitCode = forcedFailure(stage) ? forcedFailureExitCode(stage) : runScript("deploy.sh", environment, candidate);
+        suspendTelemetryIfProduction(environment);
         String pattern = "status(deploy(" + environment + "), %s)";
         updateStatus(pattern, exitCode == 0);
         log("[CicdEnvironment] percept " + String.format(pattern, status(exitCode == 0)));
@@ -126,7 +135,9 @@ public class CicdEnvironment extends Environment {
 
     private void runRollback(String environment) throws IOException, InterruptedException {
         String stage = "rollback_" + environment;
+        suspendTelemetryIfProduction(environment);
         int exitCode = forcedFailure(stage) ? forcedFailureExitCode(stage) : runScript("rollback.sh", environment);
+        suspendTelemetryIfProduction(environment);
         String rollbackPattern = "status(rollback(" + environment + "), %s)";
         updateStatus(rollbackPattern, exitCode == 0);
         log("[CicdEnvironment] percept " + String.format(rollbackPattern, status(exitCode == 0)));
@@ -135,6 +146,16 @@ public class CicdEnvironment extends Environment {
             String envPattern = "environment(" + environment + ", %s)";
             updateStatus(envPattern, true, "stable", "unstable");
             log("[CicdEnvironment] percept " + String.format(envPattern, "stable"));
+        }
+    }
+
+    private void recordDecision(Structure action) {
+        if (action.getArity() == 1) {
+            log("[CicdEnvironment][decision] " + atom(action.getTerm(0)));
+        } else if (action.getArity() == 2) {
+            log("[CicdEnvironment][decision] " + atom(action.getTerm(0)) + " reason=" + atom(action.getTerm(1)));
+        } else {
+            log("[CicdEnvironment][decision] invalid_record_decision_arity=" + action.getArity());
         }
     }
 
@@ -186,9 +207,16 @@ public class CicdEnvironment extends Environment {
 
     private void pollTelemetry(String environment) {
         try {
+            if (environment.equals("production") && System.currentTimeMillis() < productionTelemetrySuspendedUntilMillis) {
+                log("[CicdEnvironment][telemetry] skipped production poll during deployment grace window");
+                return;
+            }
+
             double errorRate = queryPrometheus(errorRateQuery(environment));
             double latencyP95Ms = queryPrometheus(latencyP95MsQuery(environment));
             double availability = queryPrometheus(availabilityQuery(environment));
+
+            clearTelemetryUnavailable(environment);
 
             String errorState = errorRate > errorRateHighGt ? "high" : "normal";
             String latencyState = latencyP95Ms > latencyP95MsHighGt ? "high" : "normal";
@@ -213,8 +241,23 @@ public class CicdEnvironment extends Environment {
                 unstable ? "unstable" : "stable"
             ));
         } catch (Exception exc) {
+            updateTelemetryUnavailable(environment);
             log("[CicdEnvironment][telemetry] poll_failed environment=" + environment + " reason=" + exc.getMessage());
         }
+    }
+
+    private void clearTelemetryUnavailable(String environment) {
+        removePercept(Literal.parseLiteral("telemetry(" + environment + ", unavailable)"));
+        removePercept(Literal.parseLiteral("network(" + environment + ", suspected)"));
+    }
+
+    private void updateTelemetryUnavailable(String environment) {
+        addPercept(Literal.parseLiteral("telemetry(" + environment + ", unavailable)"));
+        addPercept(Literal.parseLiteral("network(" + environment + ", suspected)"));
+        updateStatus("environment(" + environment + ", %s)", false, "stable", "unstable");
+        log("[CicdEnvironment] percept telemetry(" + environment + ", unavailable)");
+        log("[CicdEnvironment] percept network(" + environment + ", suspected)");
+        log("[CicdEnvironment] percept environment(" + environment + ", unstable)");
     }
 
     private void updateMetric(String environment, String metricName, String value) {
@@ -319,12 +362,28 @@ public class CicdEnvironment extends Environment {
         }
     }
 
+    private void suspendTelemetryIfProduction(String environment) {
+        if (!environment.equals("production")) {
+            return;
+        }
+        int graceSeconds = parseInt(System.getenv("BDI_TELEMETRY_GRACE_SECONDS"), 15);
+        productionTelemetrySuspendedUntilMillis = System.currentTimeMillis() + Math.max(0, graceSeconds) * 1000L;
+        log("[CicdEnvironment][telemetry] production grace window seconds=" + Math.max(0, graceSeconds));
+    }
+
     private boolean forcedFailure(String stage) {
-        return truthy(System.getenv("BDI_FORCE_" + envName(stage) + "_FAIL"));
+        String envStage = envName(stage);
+        if (truthy(System.getenv("BDI_FORCE_" + envStage + "_FAIL"))) {
+            return true;
+        }
+        if (truthy(System.getenv("BDI_FORCE_" + envStage + "_FAIL_ONCE"))) {
+            return oneShotForcedFailuresUsed.add(envStage);
+        }
+        return false;
     }
 
     private int forcedFailureExitCode(String stage) {
-        log("[CicdEnvironment] forced_failure stage=" + stage + " env=BDI_FORCE_" + envName(stage) + "_FAIL");
+        log("[CicdEnvironment] forced_failure stage=" + stage + " env=BDI_FORCE_" + envName(stage) + "_FAIL or _FAIL_ONCE");
         return 1;
     }
 

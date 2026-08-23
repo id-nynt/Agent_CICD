@@ -1,0 +1,188 @@
+[
+  {
+    "id": "success_stable",
+    "capability": "Complete a release when all actions and runtime telemetry remain healthy.",
+    "productionFailureMode": "none",
+    "productionExtraLatencyMs": 0,
+    "trafficMode": "success",
+    "trafficCount": 4,
+    "expectedBeliefs": [
+      "decision(release_complete)",
+      "environment(production,stable)"
+    ],
+    "successCriteria": "Jason reaches decision(release_complete) and no rollback decision is present."
+  },
+  {
+    "id": "build_failure",
+    "capability": "Stop the release at the build gate before any deployment action.",
+    "telemetryEnabled": false,
+    "forceFailures": ["BDI_FORCE_BUILD_FAIL"],
+    "expectedBeliefs": [
+      "status(build,failed)",
+      "decision(stop_pipeline)",
+      "stop_reason(build_failed)"
+    ],
+    "forbiddenLogPatterns": ["deploy.sh staging", "deploy.sh production"],
+    "successCriteria": "Jason perceives build failure and stops before staging or production deploy."
+  },
+  {
+    "id": "test_failure",
+    "capability": "Stop the release at the test gate after a successful build.",
+    "telemetryEnabled": false,
+    "forceFailures": ["BDI_FORCE_TEST_FAIL"],
+    "expectedBeliefs": [
+      "status(test,failed)",
+      "decision(stop_pipeline)",
+      "stop_reason(test_failed)"
+    ],
+    "forbiddenLogPatterns": ["security_scan.sh", "deploy.sh staging", "deploy.sh production"],
+    "successCriteria": "Jason perceives test failure and does not continue validation or deployment."
+  },
+  {
+    "id": "security_failure",
+    "capability": "Stop the release at the security gate before staging deployment.",
+    "telemetryEnabled": false,
+    "forceFailures": ["BDI_FORCE_SECURITY_SCAN_FAIL"],
+    "expectedBeliefs": [
+      "status(security_scan,failed)",
+      "decision(stop_pipeline)",
+      "stop_reason(security_failed)"
+    ],
+    "forbiddenLogPatterns": ["deploy.sh staging", "deploy.sh production"],
+    "successCriteria": "Jason blocks deployment when the security scan fails."
+  },
+  {
+    "id": "staging_instability",
+    "capability": "Use staging as a production gate and stop release when staging verification fails.",
+    "telemetryEnabled": false,
+    "forceFailures": ["BDI_FORCE_HEALTH_CHECK_STAGING_FAIL"],
+    "expectedBeliefs": [
+      "status(health_check(staging),failed)",
+      "environment(staging,unstable)",
+      "decision(stop_pipeline)",
+      "stop_reason(staging_unstable)"
+    ],
+    "forbiddenLogPatterns": ["deploy.sh production"],
+    "successCriteria": "Jason detects unstable staging and prevents production deployment."
+  },
+  {
+    "id": "production_high_error_rate",
+    "capability": "React to business-endpoint failures that pass /health by rolling back from telemetry.",
+    "productionFailureMode": "pay_error",
+    "productionExtraLatencyMs": 0,
+    "trafficMode": "pay_errors",
+    "trafficCount": 12,
+    "expectedBeliefs": [
+      "metric(production,error_rate,high)",
+      "environment(production,unstable)",
+      "recovery_reason(telemetry_unstable)",
+      "decision(rollback_production)",
+      "status(rollback(production),passed)"
+    ],
+    "successCriteria": "Jason rolls back only after telemetry creates production instability."
+  },
+  {
+    "id": "production_deploy_failure",
+    "capability": "Recover when production deployment fails after earlier gates passed.",
+    "telemetryEnabled": false,
+    "forceFailures": ["BDI_FORCE_DEPLOY_PRODUCTION_FAIL"],
+    "expectedBeliefs": [
+      "status(deploy(production),failed)",
+      "recovery_reason(deploy_failed)",
+      "status(rollback(production),passed)",
+      "decision(rollback_production)"
+    ],
+    "successCriteria": "Jason perceives production deploy failure, attempts rollback, and records rollback_production."
+  },
+  {
+    "id": "production_health_failure",
+    "capability": "Recover when production deploy succeeds but production health verification fails.",
+    "telemetryEnabled": false,
+    "forceFailures": ["BDI_FORCE_HEALTH_CHECK_PRODUCTION_FAIL"],
+    "expectedBeliefs": [
+      "status(health_check(production),failed)",
+      "environment(production,unstable)",
+      "recovery_reason(health_failed)",
+      "status(rollback(production),passed)",
+      "decision(rollback_production)"
+    ],
+    "successCriteria": "Jason perceives failed production health, runs rollback, and records rollback_production."
+  },
+  {
+    "id": "production_health_transient_retry",
+    "capability": "Rollback after a transient production health failure, verify recovered production, then continue deploying the same candidate.",
+    "telemetryEnabled": false,
+    "forceFailures": ["BDI_FORCE_HEALTH_CHECK_PRODUCTION_FAIL_ONCE"],
+    "expectedBeliefs": [
+      "status(health_check(production),failed)",
+      "decision(rollback_then_retry_production)",
+      "decision(continue_deploy_candidate)",
+      "status(deploy(production),passed)",
+      "status(health_check(production),passed)",
+      "decision(release_complete)"
+    ],
+    "successCriteria": "Jason handles the first production health failure, rolls back, observes stable production, retries candidate deployment, and completes the release."
+  },
+  {
+    "id": "high_latency",
+    "capability": "Treat latency-only instability as ambiguous and pause for reobservation before recovery.",
+    "productionFailureMode": "none",
+    "productionExtraLatencyMs": 800,
+    "trafficMode": "success",
+    "trafficCount": 8,
+    "expectedBeliefs": [
+      "metric(production,latency,high)",
+      "decision(pause_reobserve)",
+      "reobserve_reason(high_latency)"
+    ],
+    "successCriteria": "Jason chooses pause_reobserve for latency-only instability before deciding rollback."
+  },
+  {
+    "id": "network_suspected",
+    "capability": "Distinguish telemetry collection failure from application failure and request manual intervention.",
+    "productionFailureMode": "none",
+    "productionExtraLatencyMs": 0,
+    "trafficMode": "success",
+    "trafficCount": 2,
+    "stopPrometheusAfterRelease": true,
+    "expectedBeliefs": [
+      "telemetry(production,unavailable)",
+      "network(production,suspected)",
+      "decision(pause_reobserve)",
+      "manual_reason(network_suspected)",
+      "decision(manual_intervention_required)"
+    ],
+    "successCriteria": "Jason pauses and escalates instead of blindly rolling back when telemetry is unavailable."
+  },
+  {
+    "id": "transient_recovery",
+    "capability": "Pause and reobserve a transient latency spike, then keep the release after telemetry recovers.",
+    "productionFailureMode": "none",
+    "productionExtraLatencyMs": 800,
+    "trafficMode": "success",
+    "trafficCount": 8,
+    "healAfterPause": true,
+    "expectedBeliefs": [
+      "decision(pause_reobserve)",
+      "decision(reobserve_recovered)",
+      "decision(release_complete)",
+      "environment(production,stable)"
+    ],
+    "successCriteria": "Jason records reobserve_recovered and avoids rollback after telemetry becomes stable."
+  },
+  {
+    "id": "rollback_unavailable",
+    "capability": "Escalate to manual intervention when production recovery action fails.",
+    "productionFailureMode": "pay_error",
+    "productionExtraLatencyMs": 0,
+    "trafficMode": "pay_errors",
+    "trafficCount": 12,
+    "forceFailures": ["BDI_FORCE_ROLLBACK_PRODUCTION_FAIL"],
+    "expectedBeliefs": [
+      "metric(production,error_rate,high)",
+      "status(rollback(production),failed)",
+      "decision(manual_intervention_required)"
+    ],
+    "successCriteria": "Jason attempts rollback, perceives rollback failure, and escalates."
+  }
+]

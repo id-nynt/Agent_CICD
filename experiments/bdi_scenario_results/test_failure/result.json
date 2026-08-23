@@ -1,0 +1,41 @@
+﻿{
+    "id":  "test_failure",
+    "passed":  true,
+    "capability":  "Stop the release at the test gate after a successful build.",
+    "successCriteria":  "Jason perceives test failure and does not continue validation or deployment.",
+    "expectedBeliefs":  [
+                            {
+                                "belief":  "status(test,failed)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "decision(stop_pipeline)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "stop_reason(test_failed)",
+                                "observed":  true
+                            }
+                        ],
+    "forbiddenLogPatterns":  [
+                                 {
+                                     "pattern":  "security_scan.sh",
+                                     "observed":  false
+                                 },
+                                 {
+                                     "pattern":  "deploy.sh staging",
+                                     "observed":  false
+                                 },
+                                 {
+                                     "pattern":  "deploy.sh production",
+                                     "observed":  false
+                                 }
+                             ],
+    "notes":  [
+
+              ],
+    "resultFiles":  {
+                        "summary":  "summary.md",
+                        "environmentLog":  "..\\..\\..\\bdi\\logs\\cicd_environment.log"
+                    }
+}

@@ -1,0 +1,34 @@
+﻿{
+    "id":  "transient_recovery",
+    "passed":  true,
+    "capability":  "Pause and reobserve a transient latency spike, then keep the release after telemetry recovers.",
+    "successCriteria":  "Jason records reobserve_recovered and avoids rollback after telemetry becomes stable.",
+    "expectedBeliefs":  [
+                            {
+                                "belief":  "decision(pause_reobserve)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "decision(reobserve_recovered)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "decision(release_complete)",
+                                "observed":  true
+                            },
+                            {
+                                "belief":  "environment(production,stable)",
+                                "observed":  true
+                            }
+                        ],
+    "forbiddenLogPatterns":  [
+
+                             ],
+    "notes":  [
+
+              ],
+    "resultFiles":  {
+                        "summary":  "summary.md",
+                        "environmentLog":  "..\\..\\..\\bdi\\logs\\cicd_environment.log"
+                    }
+}

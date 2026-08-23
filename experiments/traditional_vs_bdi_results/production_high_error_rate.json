@@ -1,0 +1,434 @@
+{
+  "scenario": "production_high_error_rate",
+  "capability": "React to business-endpoint failures that pass /health by rolling back from telemetry.",
+  "traditional": {
+    "controller": "traditional_fixed_pipeline",
+    "actions": [
+      {
+        "command": [
+          "C:\\Program Files\\Git\\bin\\bash.exe",
+          "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\cicd\\actions\\build.sh",
+          "candidate"
+        ],
+        "exit_code": 0,
+        "stdout": [
+          "#1 [internal] load local bake definitions",
+          "#1 reading from stdin 1.19kB done",
+          "#1 DONE 0.0s",
+          "",
+          "#2 [payment-staging internal] load build definition from Dockerfile",
+          "#2 transferring dockerfile: 231B 0.0s done",
+          "#2 DONE 0.0s",
+          "",
+          "#3 [payment-staging internal] load metadata for docker.io/library/python:3.12-slim",
+          "#3 DONE 1.0s",
+          "",
+          "#4 [payment-production internal] load .dockerignore",
+          "#4 transferring context: 85B 0.0s done",
+          "#4 DONE 0.1s",
+          "",
+          "#5 [payment-staging internal] load build context",
+          "#5 transferring context: 67B 0.0s done",
+          "#5 DONE 0.0s",
+          "",
+          "#6 [payment-production 1/5] FROM docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a",
+          "#6 resolve docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a 0.1s done",
+          "#6 DONE 0.1s",
+          "",
+          "#7 [payment-production 2/5] WORKDIR /service",
+          "#7 CACHED",
+          "",
+          "#8 [payment-production 3/5] COPY requirements.txt .",
+          "#8 CACHED",
+          "",
+          "#9 [payment-production 4/5] RUN pip install --no-cache-dir -r requirements.txt",
+          "#9 CACHED",
+          "",
+          "#10 [payment-staging 5/5] COPY service.py .",
+          "#10 CACHED",
+          "",
+          "#11 [payment-staging] exporting to image",
+          "#11 exporting layers 0.0s done",
+          "#11 exporting manifest sha256:7bb3fe8eeb56f8fd17d64bdea8669c3ba0e37683af0a0666fd8ca622891ae591 0.0s done",
+          "#11 exporting config sha256:b73f7a41074835768300df3a4e1f1562f8fa19f8661f2bf84b7d97b05afb97b2 0.0s done",
+          "#11 exporting attestation manifest sha256:fa88e6a4c79f579c8eeecab56b4ba94cafbae8bebb0bf3e71c9333a80c0c23cd",
+          "#11 exporting attestation manifest sha256:fa88e6a4c79f579c8eeecab56b4ba94cafbae8bebb0bf3e71c9333a80c0c23cd 0.1s done",
+          "#11 exporting manifest list sha256:91c7dc2994ed016c04af97411ba4174d6b94417fcb4d2837972f84466f670487",
+          "#11 exporting manifest list sha256:91c7dc2994ed016c04af97411ba4174d6b94417fcb4d2837972f84466f670487 0.0s done",
+          "#11 naming to docker.io/library/260023_bdi_cicd-payment-staging:latest done",
+          "#11 unpacking to docker.io/library/260023_bdi_cicd-payment-staging:latest 0.0s done",
+          "#11 DONE 0.5s",
+          "",
+          "#12 [payment-production] exporting to image",
+          "#12 exporting layers 0.0s done",
+          "#12 exporting manifest sha256:eb850b27d1ed65ca22d2feb017b8e5801c4fc073a88f511ec99c64702646fc4b 0.0s done",
+          "#12 exporting config sha256:f7c988cf219a654d1d08c9946d155285c08e9f5a863e6b37acf01ef765a3da81 done",
+          "#12 exporting attestation manifest sha256:fc6362900c3d767041d88d0dc5fb06c43571932c956f838cd7fa9579a796627f 0.2s done",
+          "#12 exporting manifest list sha256:88ec2b0f262b2373748357aba6f084635558b4dff2fcfc4714ef2c0f7044984e 0.0s done",
+          "#12 naming to docker.io/library/260023_bdi_cicd-payment-production:latest 0.0s done",
+          "#12 unpacking to docker.io/library/260023_bdi_cicd-payment-production:latest 0.0s done",
+          "#12 DONE 0.5s",
+          "",
+          "#13 [payment-production] resolving provenance for metadata file",
+          "#13 DONE 0.0s",
+          "",
+          "#14 [payment-staging] resolving provenance for metadata file",
+          "#14 DONE 0.0s",
+          "[build] PASS: built payment service image for candidate (docker)"
+        ],
+        "stderr": [
+          " 260023_bdi_cicd-payment-staging  Built",
+          " 260023_bdi_cicd-payment-production  Built"
+        ],
+        "duration_seconds": 4.195,
+        "name": "build",
+        "script": "cicd/actions/build.sh"
+      },
+      {
+        "command": [
+          "C:\\Program Files\\Git\\bin\\bash.exe",
+          "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\cicd\\actions\\test.sh",
+          "candidate"
+        ],
+        "exit_code": 0,
+        "stdout": [
+          "[test] PASS: service tests passed for candidate"
+        ],
+        "stderr": [],
+        "duration_seconds": 1.575,
+        "name": "test",
+        "script": "cicd/actions/test.sh"
+      },
+      {
+        "command": [
+          "C:\\Program Files\\Git\\bin\\bash.exe",
+          "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\cicd\\actions\\security_scan.sh",
+          "candidate"
+        ],
+        "exit_code": 0,
+        "stdout": [
+          "[security_scan] PASS: no simple secret patterns found for payment service candidate"
+        ],
+        "stderr": [],
+        "duration_seconds": 0.183,
+        "name": "security_scan",
+        "script": "cicd/actions/security_scan.sh"
+      },
+      {
+        "command": [
+          "C:\\Program Files\\Git\\bin\\bash.exe",
+          "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\cicd\\actions\\deploy.sh",
+          "staging",
+          "candidate"
+        ],
+        "exit_code": 0,
+        "stdout": [
+          "#1 [internal] load local bake definitions",
+          "#1 reading from stdin 632B done",
+          "#1 DONE 0.0s",
+          "",
+          "#2 [internal] load build definition from Dockerfile",
+          "#2 transferring dockerfile: 231B 0.0s done",
+          "#2 DONE 0.0s",
+          "",
+          "#3 [internal] load metadata for docker.io/library/python:3.12-slim",
+          "#3 DONE 0.6s",
+          "",
+          "#4 [internal] load .dockerignore",
+          "#4 transferring context: 85B 0.0s done",
+          "#4 DONE 0.0s",
+          "",
+          "#5 [internal] load build context",
+          "#5 transferring context: 67B done",
+          "#5 DONE 0.0s",
+          "",
+          "#6 [1/5] FROM docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a",
+          "#6 resolve docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a 0.0s done",
+          "#6 DONE 0.0s",
+          "",
+          "#7 [2/5] WORKDIR /service",
+          "#7 CACHED",
+          "",
+          "#8 [3/5] COPY requirements.txt .",
+          "#8 CACHED",
+          "",
+          "#9 [4/5] RUN pip install --no-cache-dir -r requirements.txt",
+          "#9 CACHED",
+          "",
+          "#10 [5/5] COPY service.py .",
+          "#10 CACHED",
+          "",
+          "#11 exporting to image",
+          "#11 exporting layers done",
+          "#11 exporting manifest sha256:7bb3fe8eeb56f8fd17d64bdea8669c3ba0e37683af0a0666fd8ca622891ae591 done",
+          "#11 exporting config sha256:b73f7a41074835768300df3a4e1f1562f8fa19f8661f2bf84b7d97b05afb97b2 done",
+          "#11 exporting attestation manifest sha256:0ee6189ef6fb1fda2c1f03b796cdf7d4974ef1cdd5191de9d109917c9486d073 0.0s done",
+          "#11 exporting manifest list sha256:ddd6cd291580bf797b49c1a0fd640ddd737dbd8884105d65a8f3d8d38bc8d697 0.0s done",
+          "#11 naming to docker.io/library/260023_bdi_cicd-payment-staging:latest done",
+          "#11 unpacking to docker.io/library/260023_bdi_cicd-payment-staging:latest",
+          "#11 unpacking to docker.io/library/260023_bdi_cicd-payment-staging:latest 0.0s done",
+          "#11 DONE 0.2s",
+          "",
+          "#12 resolving provenance for metadata file",
+          "#12 DONE 0.0s",
+          "[deploy] PASS: deployed candidate to staging using payment-staging"
+        ],
+        "stderr": [
+          " 260023_bdi_cicd-payment-staging  Built",
+          " Network 260023_bdi_cicd_default  Creating",
+          " Network 260023_bdi_cicd_default  Created",
+          " Container payment-staging  Creating",
+          " Container payment-staging  Created",
+          " Container payment-staging  Starting",
+          " Container payment-staging  Started",
+          " Container prometheus  Creating",
+          " Container prometheus  Created",
+          " Container prometheus  Starting",
+          " Container prometheus  Started"
+        ],
+        "duration_seconds": 5.106,
+        "name": "deploy_staging",
+        "script": "cicd/actions/deploy.sh"
+      },
+      {
+        "command": [
+          "C:\\Program Files\\Git\\bin\\bash.exe",
+          "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\cicd\\actions\\health_check.sh",
+          "staging"
+        ],
+        "exit_code": 0,
+        "stdout": [
+          "[health_check] PASS: staging is healthy at http://localhost:8001/health"
+        ],
+        "stderr": [],
+        "duration_seconds": 0.376,
+        "name": "health_check_staging",
+        "script": "cicd/actions/health_check.sh"
+      },
+      {
+        "command": [
+          "C:\\Program Files\\Git\\bin\\bash.exe",
+          "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\cicd\\actions\\deploy.sh",
+          "production",
+          "candidate"
+        ],
+        "exit_code": 0,
+        "stdout": [
+          "#1 [internal] load local bake definitions",
+          "#1 reading from stdin 644B done",
+          "#1 DONE 0.0s",
+          "",
+          "#2 [internal] load build definition from Dockerfile",
+          "#2 transferring dockerfile: 231B 0.0s done",
+          "#2 DONE 0.0s",
+          "",
+          "#3 [internal] load metadata for docker.io/library/python:3.12-slim",
+          "#3 DONE 0.5s",
+          "",
+          "#4 [internal] load .dockerignore",
+          "#4 transferring context: 85B 0.0s done",
+          "#4 DONE 0.0s",
+          "",
+          "#5 [internal] load build context",
+          "#5 transferring context: 67B 0.0s done",
+          "#5 DONE 0.0s",
+          "",
+          "#6 [1/5] FROM docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a",
+          "#6 resolve docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a",
+          "#6 resolve docker.io/library/python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa7036991a2a63c4a 0.2s done",
+          "#6 DONE 0.2s",
+          "",
+          "#7 [2/5] WORKDIR /service",
+          "#7 CACHED",
+          "",
+          "#8 [3/5] COPY requirements.txt .",
+          "#8 CACHED",
+          "",
+          "#9 [4/5] RUN pip install --no-cache-dir -r requirements.txt",
+          "#9 CACHED",
+          "",
+          "#10 [5/5] COPY service.py .",
+          "#10 CACHED",
+          "",
+          "#11 exporting to image",
+          "#11 exporting layers 0.0s done",
+          "#11 exporting manifest sha256:eb850b27d1ed65ca22d2feb017b8e5801c4fc073a88f511ec99c64702646fc4b done",
+          "#11 exporting config sha256:f7c988cf219a654d1d08c9946d155285c08e9f5a863e6b37acf01ef765a3da81 done",
+          "#11 exporting attestation manifest sha256:c7cfea7a65aec6db918118dff772ad6a5469b2f0096bb635875f669082d95d61",
+          "#11 exporting attestation manifest sha256:c7cfea7a65aec6db918118dff772ad6a5469b2f0096bb635875f669082d95d61 0.1s done",
+          "#11 exporting manifest list sha256:b736aa8bbf36fd114a4e4b3823492bac109278776fdf94babed97a80b2c3834a",
+          "#11 exporting manifest list sha256:b736aa8bbf36fd114a4e4b3823492bac109278776fdf94babed97a80b2c3834a 0.1s done",
+          "#11 naming to docker.io/library/260023_bdi_cicd-payment-production:latest done",
+          "#11 unpacking to docker.io/library/260023_bdi_cicd-payment-production:latest 0.0s done",
+          "#11 DONE 0.3s",
+          "",
+          "#12 resolving provenance for metadata file",
+          "#12 DONE 0.0s",
+          "[deploy] PASS: deployed candidate to production using payment-production"
+        ],
+        "stderr": [
+          " 260023_bdi_cicd-payment-production  Built",
+          " Container payment-production  Creating",
+          " Container payment-production  Created",
+          " Container payment-production  Starting",
+          " Container payment-production  Started",
+          " Container prometheus  Running"
+        ],
+        "duration_seconds": 4.766,
+        "name": "deploy_production",
+        "script": "cicd/actions/deploy.sh"
+      },
+      {
+        "command": [
+          "C:\\Program Files\\Git\\bin\\bash.exe",
+          "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\cicd\\actions\\health_check.sh",
+          "production"
+        ],
+        "exit_code": 0,
+        "stdout": [
+          "[health_check] PASS: production is healthy at http://localhost:8002/health"
+        ],
+        "stderr": [],
+        "duration_seconds": 0.35,
+        "name": "health_check_production",
+        "script": "cicd/actions/health_check.sh"
+      }
+    ],
+    "final_decision": "release_complete",
+    "final_production_version": "candidate",
+    "telemetry": {
+      "available": true,
+      "data": {
+        "environment": "production",
+        "prometheus_url": "http://localhost:9090",
+        "queries": {
+          "availability": "avg(payment_service_health{environment=\"production\"})",
+          "error_rate": "sum(payment_service_errors_total{environment=\"production\",endpoint=~\"/pay|/refund\"}) / clamp_min(sum(payment_service_requests_total{environment=\"production\",endpoint=~\"/pay|/refund\"}), 1)",
+          "latency_p95_ms": "histogram_quantile(0.95, sum by (le) (payment_service_request_latency_seconds_bucket{environment=\"production\",endpoint=~\"/pay|/refund\"})) * 1000"
+        },
+        "source": "prometheus",
+        "telemetry": {
+          "availability": 0.0,
+          "error_rate": 0.0,
+          "latency_p95_ms": 0.0
+        },
+        "window": "1m"
+      }
+    },
+    "explanation": "Fixed pipeline completed build, test, security, staging, and production health gates. Runtime traffic was generated after release, but the fixed pipeline has no post-release reasoning loop.",
+    "uses_public_actions": true
+  },
+  "bdi": {
+    "controller": "jason_bdi_controller",
+    "runner_command": [
+      "powershell",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\run_bdi_scenario_suite.ps1",
+      "-Scenario",
+      "production_high_error_rate",
+      "-TelemetryIntervalSeconds",
+      "3",
+      "-TelemetryGraceSeconds",
+      "5",
+      "-TimeoutSeconds",
+      "210"
+    ],
+    "runner_exit_code": 0,
+    "runner_stdout": [
+      "[scenario_suite] Running production_high_error_rate",
+      "[scenario_suite] checking belief metric(production,error_rate,high)",
+      "[scenario_suite] checking belief environment(production,unstable)",
+      "[scenario_suite] checking belief recovery_reason(telemetry_unstable)",
+      "[scenario_suite] checking belief decision(rollback_production)",
+      "[scenario_suite] checking belief status(rollback(production),passed)",
+      "[scenario_suite] belief checks complete for production_high_error_rate",
+      "[scenario_suite] collecting evidence for production_high_error_rate",
+      "[scenario_suite] writing evidence for production_high_error_rate",
+      "[scenario_suite] PASS: production_high_error_rate",
+      "[scenario_suite] Wrote C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\bdi_scenario_results\\summary.md"
+    ],
+    "runner_stderr": [
+      " Container prometheus  Stopping",
+      " Container prometheus  Stopped",
+      " Container prometheus  Removing",
+      " Container prometheus  Removed",
+      " Container payment-staging  Stopping",
+      " Container payment-production  Stopping",
+      " Container payment-production  Stopped",
+      " Container payment-production  Removing",
+      " Container payment-production  Removed",
+      " Container payment-staging  Stopped",
+      " Container payment-staging  Removing",
+      " Container payment-staging  Removed",
+      " Network 260023_bdi_cicd_default  Removing",
+      " Network 260023_bdi_cicd_default  Removed"
+    ],
+    "scenario_result": {
+      "id": "production_high_error_rate",
+      "passed": true,
+      "capability": "React to business-endpoint failures that pass /health by rolling back from telemetry.",
+      "successCriteria": "Jason rolls back only after telemetry creates production instability.",
+      "expectedBeliefs": [
+        {
+          "belief": "metric(production,error_rate,high)",
+          "observed": true
+        },
+        {
+          "belief": "environment(production,unstable)",
+          "observed": true
+        },
+        {
+          "belief": "recovery_reason(telemetry_unstable)",
+          "observed": true
+        },
+        {
+          "belief": "decision(rollback_production)",
+          "observed": true
+        },
+        {
+          "belief": "status(rollback(production),passed)",
+          "observed": true
+        }
+      ],
+      "forbiddenLogPatterns": [],
+      "notes": [],
+      "resultFiles": {
+        "summary": "summary.md",
+        "environmentLog": "..\\..\\..\\bdi\\logs\\cicd_environment.log"
+      }
+    },
+    "bdi_percepts_and_beliefs": [
+      "metric(production,error_rate,high)",
+      "environment(production,unstable)",
+      "recovery_reason(telemetry_unstable)",
+      "decision(rollback_production)",
+      "status(rollback(production),passed)"
+    ],
+    "final_decision": "rollback_production",
+    "final_production_version": "stable",
+    "telemetry": {
+      "available": true,
+      "data": {
+        "environment": "production",
+        "prometheus_url": "http://localhost:9090",
+        "queries": {
+          "availability": "avg(payment_service_health{environment=\"production\"})",
+          "error_rate": "sum(payment_service_errors_total{environment=\"production\",endpoint=~\"/pay|/refund\"}) / clamp_min(sum(payment_service_requests_total{environment=\"production\",endpoint=~\"/pay|/refund\"}), 1)",
+          "latency_p95_ms": "histogram_quantile(0.95, sum by (le) (payment_service_request_latency_seconds_bucket{environment=\"production\",endpoint=~\"/pay|/refund\"})) * 1000"
+        },
+        "source": "prometheus",
+        "telemetry": {
+          "availability": 1.0,
+          "error_rate": 0.0,
+          "latency_p95_ms": 0.0
+        },
+        "window": "1m"
+      }
+    },
+    "explanation": "BDI perceived production instability and selected the rollback recovery plan.",
+    "uses_public_actions": true
+  },
+  "comparison_note": "BDI improves reliability by reacting to post-release telemetry that the fixed pipeline ignores."
+}

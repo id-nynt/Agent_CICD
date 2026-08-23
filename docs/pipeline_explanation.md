@@ -1,5 +1,7 @@
 # Pipeline Explanation
 
+Status note: this is an older explanatory document that includes both current and legacy workflows. For the current real Jason controller path, read `docs/architecture.md` and `docs/bdi_goal_model.md` first. Any section describing `bdi/run_agent_for_scenario.sh` output as a modeled trace refers to legacy Bash/Python scaffolding, not Jason runtime decision-making.
+
 This document explains the two pipeline styles in this repository:
 
 1. Traditional CI/CD pipeline
