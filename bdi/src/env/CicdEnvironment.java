@@ -39,6 +39,7 @@ public class CicdEnvironment extends Environment {
     private double availabilityLowLt;
     private String prometheusUrl;
     private volatile long productionTelemetrySuspendedUntilMillis;
+    private final Map<String, String> environmentStates = new ConcurrentHashMap<>();
     private final Set<String> oneShotForcedFailuresUsed = ConcurrentHashMap.newKeySet();
 
     @Override
@@ -91,6 +92,10 @@ public class CicdEnvironment extends Environment {
                 case "rollback":
                     requireArity(action, 1);
                     runRollback(atom(action.getTerm(0)));
+                    return true;
+                case "observe":
+                    requireArity(action, 2);
+                    runObservation(atom(action.getTerm(0)), atom(action.getTerm(1)));
                     return true;
                 case "record_decision":
                     recordDecision(action);
@@ -157,6 +162,23 @@ public class CicdEnvironment extends Environment {
         } else {
             log("[CicdEnvironment][decision] invalid_record_decision_arity=" + action.getArity());
         }
+    }
+
+    private void runObservation(String environment, String phase) throws InterruptedException {
+        int durationMs = observationDurationMs(environment, phase);
+        log("[CicdEnvironment][observe] start environment=" + environment + " phase=" + phase + " duration_ms=" + durationMs);
+        Thread.sleep(Math.max(0, durationMs));
+
+        String state = environmentStates.getOrDefault(environment, "unknown");
+        boolean stable = state.equals("stable");
+        String pattern = "observation(" + environment + ", " + phase + ", %s)";
+        removePercept(Literal.parseLiteral(String.format(pattern, "stable")));
+        removePercept(Literal.parseLiteral(String.format(pattern, "unstable")));
+        removePercept(Literal.parseLiteral(String.format(pattern, "unknown")));
+        addPercept(Literal.parseLiteral(String.format(pattern, stable ? "stable" : state.equals("unstable") ? "unstable" : "unknown")));
+
+        log("[CicdEnvironment][observe] complete environment=" + environment + " phase=" + phase + " state=" + state);
+        log("[CicdEnvironment] percept " + String.format(pattern, stable ? "stable" : state.equals("unstable") ? "unstable" : "unknown"));
     }
 
     private int runScript(String scriptName, String... args) throws IOException, InterruptedException {
@@ -407,6 +429,22 @@ public class CicdEnvironment extends Environment {
         removePercept(Literal.parseLiteral(String.format(pattern, passedAtom)));
         removePercept(Literal.parseLiteral(String.format(pattern, failedAtom)));
         addPercept(Literal.parseLiteral(String.format(pattern, passed ? passedAtom : failedAtom)));
+        rememberEnvironmentState(pattern, passed ? passedAtom : failedAtom);
+    }
+
+    private void rememberEnvironmentState(String pattern, String value) {
+        if (pattern.startsWith("environment(production,")) {
+            environmentStates.put("production", value);
+        } else if (pattern.startsWith("environment(staging,")) {
+            environmentStates.put("staging", value);
+        }
+    }
+
+    private int observationDurationMs(String environment, String phase) {
+        String specificKey = "BDI_OBSERVE_" + envName(environment) + "_" + envName(phase) + "_MS";
+        String environmentKey = "BDI_OBSERVE_" + envName(environment) + "_MS";
+        int defaultMs = environment.equals("production") ? 20000 : 8000;
+        return parseInt(System.getenv(specificKey), parseInt(System.getenv(environmentKey), defaultMs));
     }
 
     private String status(boolean passed) {

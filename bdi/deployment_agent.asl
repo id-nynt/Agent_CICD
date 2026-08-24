@@ -43,12 +43,14 @@ candidate(candidate).
 // Root goal: deliver a candidate release while preserving production reliability.
 +!deliver_release(Candidate)
   <- .print("[deployment_agent][goal] !deliver_release(", Candidate, ")");
+     +delivery_in_progress(Candidate);
      !prepare_candidate(Candidate);
      !validate_candidate(Candidate);
      !deploy_to_staging(Candidate);
      !verify_staging;
      !deploy_to_production(Candidate);
      !verify_production;
+     !observe_production_canary;
      !maintain_reliability.
 
 // Build preparation.
@@ -69,7 +71,7 @@ candidate(candidate).
 +!handle_build_result
   : status(build, failed)
   <- .print("[deployment_agent][belief] status(build, failed)");
-     !stop_release(build_failed).
+     !fail_delivery(candidate, build_failed).
 
 // Candidate validation.
 +!validate_candidate(Candidate)
@@ -90,7 +92,7 @@ candidate(candidate).
 +!handle_test_result
   : status(test, failed)
   <- .print("[deployment_agent][belief] status(test, failed)");
-     !stop_release(test_failed).
+     !fail_delivery(candidate, test_failed).
 
 +!run_security_scan(Candidate)
   <- .print("[deployment_agent][plan] security scan candidate");
@@ -105,7 +107,7 @@ candidate(candidate).
 +!handle_security_scan_result
   : status(security_scan, failed)
   <- .print("[deployment_agent][belief] status(security_scan, failed)");
-     !stop_release(security_failed).
+     !fail_delivery(candidate, security_failed).
 
 // Staging deployment gate.
 +!deploy_to_staging(Candidate)
@@ -121,7 +123,7 @@ candidate(candidate).
 +!handle_staging_deploy_result
   : status(deploy(staging), failed)
   <- .print("[deployment_agent][belief] status(deploy(staging), failed)");
-     !stop_release(staging_deploy_failed).
+     !defer_delivery(candidate, staging_deploy_failed).
 
 +!verify_staging
   <- .print("[deployment_agent][subgoal] !verify_staging");
@@ -135,7 +137,7 @@ candidate(candidate).
 
 +!handle_staging_health_result
   <- .print("[deployment_agent][belief] staging unstable");
-     !stop_release(staging_unstable).
+     !defer_delivery(candidate, staging_unstable).
 
 // Production deployment gate.
 +!deploy_to_production(Candidate)
@@ -151,7 +153,8 @@ candidate(candidate).
 +!handle_production_deploy_result
   : status(deploy(production), failed)
   <- .print("[deployment_agent][belief] status(deploy(production), failed)");
-     !recover_production(deploy_failed);
+     !restore_production_reliability(deploy_failed);
+     !defer_delivery(Candidate, production_deploy_failed);
      !keep_alive.
 
 +!verify_production
@@ -162,57 +165,115 @@ candidate(candidate).
 
 +!handle_production_health_result
   : status(health_check(production), passed)
-  <- .print("[deployment_agent][belief] status(health_check(production), passed)").
+  <- .print("[deployment_agent][belief] status(health_check(production), passed)");
+     -release_monitoring_enabled(production);
+     +release_monitoring_enabled(production).
 
 +!handle_production_health_result
   : status(health_check(production), failed)
   <- .print("[deployment_agent][belief] status(health_check(production), failed)");
      !recover_production(health_failed).
 
++!observe_production_canary
+  <- .print("[deployment_agent][subgoal] !observe_production_canary");
+     .print("[deployment_agent][decision] observe_production_canary");
+     record_decision(observe_production_canary);
+     observe(production, canary);
+     !handle_production_canary_observation.
+
++!handle_production_canary_observation
+  : observation(production, canary, stable) & environment(production, stable)
+  <- .print("[deployment_agent][belief] production stable after canary observation").
+
++!handle_production_canary_observation
+  : telemetry(production, unavailable)
+  <- .print("[deployment_agent][belief] telemetry unavailable during canary observation");
+     !pause_reobserve(network_suspected).
+
++!handle_production_canary_observation
+  : metric(production, latency, high) & not metric(production, error_rate, high)
+  <- .print("[deployment_agent][belief] high latency during canary observation");
+     !pause_reobserve(high_latency).
+
++!handle_production_canary_observation
+  : metric(production, error_rate, high)
+    & candidate(Candidate)
+  <- .print("[deployment_agent][belief] high error rate during canary observation");
+     !restore_production_reliability(candidate_unsafe);
+     !fail_delivery(Candidate, candidate_unsafe).
+
++!handle_production_canary_observation
+  : observation(production, canary, unstable)
+    & candidate(Candidate)
+  <- .print("[deployment_agent][belief] production unstable after canary observation");
+     !restore_production_reliability(telemetry_unstable);
+     !fail_delivery(Candidate, telemetry_unstable).
+
++!handle_production_canary_observation
+  <- .print("[deployment_agent][belief] production canary observation inconclusive");
+     .print("[deployment_agent][decision] reliability_unknown");
+     record_decision(reliability_unknown);
+     !defer_delivery(candidate, reliability_unknown).
+
 // Reliability goal.
 +!maintain_reliability
-  : environment(production, stable)
+  : environment(production, stable) & candidate(Candidate)
   <- .print("[deployment_agent][goal] !maintain_reliability");
-     .print("[deployment_agent][decision] release_complete");
-     record_decision(release_complete);
-     +decision(release_complete);
      -release_monitoring_enabled(production);
      +release_monitoring_enabled(production);
-     .print("[deployment_agent] release complete");
-     !keep_alive.
+     !succeed_delivery(Candidate).
 
 +!maintain_reliability
-  : environment(production, unstable)
+  : environment(production, unstable) & candidate(Candidate)
   <- .print("[deployment_agent][goal] !maintain_reliability");
-     !recover_production(production_unstable);
+     !restore_production_reliability(production_unstable);
+     !fail_delivery(Candidate, production_unstable);
      !keep_alive.
 
 +!maintain_reliability
   <- .print("[deployment_agent][goal] !maintain_reliability");
      .print("[deployment_agent][decision] reliability_unknown");
-     !keep_alive.
+     record_decision(reliability_unknown);
+     !defer_delivery(candidate, reliability_unknown).
 
 +!recover_production(Reason)
   <- .print("[deployment_agent][goal] !recover_production(", Reason, ")");
+     !restore_production_reliability(Reason);
+     !handle_recovery_delivery_outcome(Reason).
+
++!restore_production_reliability(Reason)
+  <- .print("[deployment_agent][goal] !restore_production_reliability(", Reason, ")");
      -release_monitoring_enabled(production);
      record_decision(recovery_reason, Reason);
      +recovery_attempted(production);
      +recovery_reason(Reason);
      rollback(production);
      .wait(250);
-     !handle_rollback_result.
+     !handle_reliability_restore_result(Reason).
 
-+!handle_rollback_result
++!handle_reliability_restore_result(Reason)
   : status(rollback(production), passed)
-    & recovery_reason(deploy_failed)
-    & candidate(Candidate)
-    & not production_retry_attempted(Candidate)
-  <- .print("[deployment_agent][belief] status(rollback(production), passed)");
-     .print("[deployment_agent][decision] rollback_then_retry_production");
-     record_decision(rollback_then_retry_production, deploy_failed);
-     +decision(rollback_then_retry_production);
-     +production_retry_attempted(Candidate);
-     !verify_recovered_production_before_retry(Candidate, deploy_failed).
+  <- .print("[deployment_agent][belief] production reliability restored");
+     record_decision(production_reliability_restored, Reason);
+     +production_reliability_restored;
+     +production_reliability_restored(Reason).
+
++!handle_reliability_restore_result(Reason)
+  : status(rollback(production), failed)
+  <- .print("[deployment_agent][belief] production reliability restore failed");
+     .print("[deployment_agent][decision] manual_intervention_required");
+     record_decision(manual_intervention_required, rollback_failed);
+     +decision(manual_intervention_required);
+     +manual_reason(rollback_failed);
+     !keep_alive.
+
++!handle_recovery_delivery_outcome(Reason)
+  : recovery_reason(health_failed)
+  <- !handle_rollback_result.
+
++!handle_recovery_delivery_outcome(Reason)
+  : candidate(Candidate)
+  <- !fail_delivery(Candidate, Reason).
 
 +!handle_rollback_result
   : status(rollback(production), passed)
@@ -256,6 +317,7 @@ candidate(candidate).
      +decision(continue_deploy_candidate);
      !deploy_to_production(Candidate);
      !verify_production;
+     !observe_production_canary;
      !maintain_reliability.
 
 +!handle_recovered_production_before_retry(Candidate, Reason)
@@ -275,14 +337,20 @@ candidate(candidate).
      !handle_reobserve_result(Reason).
 
 +!handle_reobserve_result(Reason)
-  : environment(production, stable)
+  : environment(production, stable) & candidate(Candidate)
   <- .print("[deployment_agent][belief] production stable after reobserve");
-     .print("[deployment_agent][decision] release_complete");
      record_decision(reobserve_recovered, Reason);
-     record_decision(release_complete);
      +decision(reobserve_recovered);
-     +decision(release_complete);
-     !keep_alive.
+     !succeed_delivery(Candidate).
+
++!handle_reobserve_result(Reason)
+  : telemetry(production, unavailable) & candidate(Candidate)
+  <- .print("[deployment_agent][belief] telemetry unavailable after reobserve");
+     .print("[deployment_agent][decision] manual_intervention_required");
+     record_decision(manual_intervention_required, Reason);
+     +decision(manual_intervention_required);
+     +manual_reason(Reason);
+     !defer_delivery(Candidate, Reason).
 
 +!handle_reobserve_result(Reason)
   : telemetry(production, unavailable)
@@ -294,9 +362,42 @@ candidate(candidate).
      !keep_alive.
 
 +!handle_reobserve_result(Reason)
-  : environment(production, unstable)
+  : environment(production, unstable) & candidate(Candidate)
   <- .print("[deployment_agent][belief] production still unstable after reobserve");
-     !recover_production(Reason).
+     !restore_production_reliability(Reason);
+     !fail_delivery(Candidate, Reason).
+
++!succeed_delivery(Candidate)
+  <- .print("[deployment_agent][outcome] delivery_succeeded(", Candidate, ")");
+     .print("[deployment_agent][decision] delivery_succeeded");
+     record_decision(delivery_succeeded, Candidate);
+     record_decision(release_complete);
+     -delivery_in_progress(Candidate);
+     +delivery_succeeded(Candidate);
+     +decision(delivery_succeeded);
+     +decision(release_complete);
+     .print("[deployment_agent] release complete");
+     !keep_alive.
+
++!fail_delivery(Candidate, Reason)
+  <- .print("[deployment_agent][outcome] delivery_failed(", Candidate, ", ", Reason, ")");
+     .print("[deployment_agent][decision] delivery_failed");
+     record_decision(delivery_failed, Reason);
+     -delivery_in_progress(Candidate);
+     +delivery_failed(Candidate, Reason);
+     +decision(delivery_failed);
+     +delivery_failure_reason(Reason);
+     !keep_alive.
+
++!defer_delivery(Candidate, Reason)
+  <- .print("[deployment_agent][outcome] delivery_deferred(", Candidate, ", ", Reason, ")");
+     .print("[deployment_agent][decision] delivery_deferred");
+     record_decision(delivery_deferred, Reason);
+     -delivery_in_progress(Candidate);
+     +delivery_deferred(Candidate, Reason);
+     +decision(delivery_deferred);
+     +delivery_defer_reason(Reason);
+     !keep_alive.
 
 +!stop_release(Reason)
   <- .print("[deployment_agent][decision] stop_pipeline");
