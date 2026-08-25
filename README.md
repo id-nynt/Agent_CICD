@@ -1,223 +1,286 @@
-# BDI CI/CD Research Prototype
+# Autonomous CI/CD With a Jason BDI Agent
 
-This repository is a local prototype for autonomous CI/CD using a Jason BDI agent.
+This repository is a prototype for **autonomous CI/CD using a Belief-Desire-Intention (BDI) agent**. It compares a traditional fixed deployment pipeline with a Jason-based controller that can perceive CI/CD results and Prometheus telemetry, reason over those beliefs, and choose whether to continue delivery, pause, retry, rollback, defer, fail, or request manual intervention.
 
-The current real controller path is:
+The prototype simulates deployment of a local payment service. It is not production-ready infrastructure; it is a controlled research environment for showing how BDI reasoning can make deployment decisions more adaptive and explainable.
+
+## Research Idea
+
+The BDI controller pursues this objective:
 
 ```text
-Jason deployment_agent.asl
-  -> CicdEnvironment.java
-  -> cicd/actions/*.sh
-  -> Docker Compose payment service
-  -> Prometheus telemetry
-  -> CicdEnvironment.java telemetry polling
-  -> Jason percepts and AgentSpeak plans
+Deliver the candidate successfully while preserving production reliability.
 ```
 
-The older generated-belief path still exists, but it is legacy scaffolding. When `bdi/run_agent_for_scenario.sh` is run without `--jason`, its trace is modeled by Bash from generated `.asl` files. That path is useful for historical comparison only; it is not evidence that Jason selected plans.
+Rollback is not counted as delivery success. Rollback is a safety action that can restore production reliability while the candidate may still fail or be deferred.
 
-## What Starts The Demo
+The agent records outcomes such as:
 
-Current recommended successful-path demo:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\experiments\demo_successful_path.ps1
+```text
+delivery_succeeded(candidate)
+delivery_failed(candidate, Reason)
+delivery_deferred(candidate, Reason)
+production_reliability_restored
 ```
 
-Current recommended telemetry-failure demo:
+## Current Architecture
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\experiments\demo_failed_telemetry_path.ps1
+```text
+User or experiment script
+        |
+        v
+Jason MAS: bdi/project.mas2j
+        |
+        v
+BDI agent: bdi/deployment_agent.asl
+        |
+        | external actions: build, test, deploy, observe, rollback
+        v
+Java environment: bdi/src/env/CicdEnvironment.java
+        |
+        | runs the public CI/CD scripts
+        v
+cicd/actions/*.sh
+        |
+        v
+Docker Compose
+        |
+        +--> payment-staging      http://localhost:8001
+        +--> payment-production   http://localhost:8002
+        `--> prometheus           http://localhost:9090
 ```
 
-Manual Jason run:
+Telemetry closes the loop:
+
+```text
+payment service traffic
+  -> /metrics
+  -> Prometheus scrape
+  -> CicdEnvironment polling
+  -> Jason percepts
+  -> AgentSpeak plans
+  -> next CI/CD action
+```
+
+## Main Components
+
+| Component         | Location                                       | Purpose                                                                           |
+| ----------------- | ---------------------------------------------- | --------------------------------------------------------------------------------- |
+| Payment service   | `app/payment_service/service.py`               | Flask service with `/health`, `/pay`, `/refund`, and `/metrics`.                  |
+| Docker Compose    | `docker-compose.yml`                           | Runs staging, production, and Prometheus locally.                                 |
+| CI/CD actions     | `cicd/actions/*.sh`                            | Shared action interface for both traditional and BDI flows.                       |
+| Jason project     | `bdi/project.mas2j`                            | Starts the Jason MAS and registers the Java environment.                          |
+| BDI agent         | `bdi/deployment_agent.asl`                     | Contains goals, beliefs, plans, recovery logic, and outcome semantics.            |
+| Java bridge       | `bdi/src/env/CicdEnvironment.java`             | Executes shell actions and converts action/telemetry results into Jason percepts. |
+| Prometheus config | `runtime/prometheus/prometheus.yml`            | Scrapes staging and production metrics.                                           |
+| Thresholds        | `telemetry/thresholds.yml`                     | Defines when telemetry becomes normal/high/low.                                   |
+| Experiment guides | `experiments/01_*.md` to `experiments/07_*.md` | Manual scenario instructions and expected evidence.                               |
+
+## What Is Real in the Current Demo
+
+The active BDI path is:
+
+```text
+bdi/project.mas2j
+-> bdi/deployment_agent.asl
+-> bdi/src/env/CicdEnvironment.java
+-> cicd/actions/*.sh
+-> docker-compose.yml
+-> app/payment_service/service.py
+-> Prometheus
+-> CicdEnvironment.java
+-> Jason beliefs and plans
+```
+
+Jason really executes the agent plans. The Java environment really runs the shell scripts. Prometheus telemetry is really queried and converted into Jason percepts such as:
+
+```text
+metric(production,error_rate,high)
+metric(production,latency,normal)
+metric(production,availability,high)
+environment(production,unstable)
+status(rollback(production),passed)
+```
+
+The older generated-belief path under `bdi/cicd_agent.asl`, `bdi/run_agent_for_scenario.sh`, and `telemetry/generated_beliefs/` is legacy scaffolding. It is useful for project history, but it should not be used as evidence that Jason made runtime decisions.
+
+## Prerequisites
+
+Install and start:
+
+```text
+Docker Desktop
+PowerShell
+Git Bash
+Java
+Gradle
+Jason
+```
+
+The scripts assume Jason can be run with:
 
 ```powershell
-cd bdi
 jason project.mas2j
 ```
 
-## Components
+Before the first Jason run, build the Java environment:
 
-| Component                            | Where                               | One-sentence role                                                                      |
-| ------------------------------------ | ----------------------------------- | -------------------------------------------------------------------------------------- |
-| Payment service                      | `app/payment_service/service.py`    | Flask service that exposes `/health`, `/pay`, `/refund`, and `/metrics`.               |
-| Docker Compose                       | `docker-compose.yml`                | Runs staging, production, and Prometheus containers locally.                           |
-| Shell actions                        | `cicd/actions/*.sh`                 | Public CI/CD action interface used by both traditional and BDI flows.                  |
-| Prometheus                           | `runtime/prometheus/prometheus.yml` | Scrapes payment-service `/metrics` every 5 seconds.                                    |
-| Jason MAS                            | `bdi/project.mas2j`                 | Starts `deployment_agent` with `CicdEnvironment`.                                      |
-| BDI agent                            | `bdi/deployment_agent.asl`          | Holds goals, plans, beliefs, and decisions.                                            |
-| Jason environment bridge             | `bdi/src/env/CicdEnvironment.java`  | Executes shell actions and converts action results plus telemetry into Jason percepts. |
-| Manual demo guides                   | `experiments/demo_*.md`             | Explain the successful path and telemetry-driven failed path step by step.             |
-| Demo scripts                         | `experiments/demo_*.ps1`            | Automate the same demos without choosing BDI decisions.                                |
-| Archived scenario/comparison runners | `experiments/archive/`              | Older broader scenario-suite and comparison artifacts.                                 |
-
-## What Calls What
-
-```text
-demo_successful_path.ps1 or demo_failed_telemetry_path.ps1
-  -> jason project.mas2j
-    -> bdi/deployment_agent.asl
-      -> external action build(candidate)
-        -> CicdEnvironment.executeAction(...)
-          -> cicd/actions/build.sh candidate
-      -> external action deploy(candidate, production)
-        -> CicdEnvironment.executeAction(...)
-          -> cicd/actions/deploy.sh production candidate
-            -> docker compose up payment-production
-      -> external action rollback(production)
-        -> CicdEnvironment.executeAction(...)
-          -> cicd/actions/rollback.sh production
-            -> docker compose up payment-production with stable version
+```powershell
+cd bdi
+gradle build
 ```
 
-Prometheus telemetry path:
+## Quick Start
 
-```text
-payment service /pay, /refund, /health
-  -> prometheus_client counters, histograms, gauges
-  -> /metrics
-  -> Prometheus scrape
-  -> CicdEnvironment HTTP query to Prometheus API
-  -> Jason percepts such as metric(production,error_rate,high)
-  -> deployment_agent.asl reactive plans
+Run the successful BDI delivery scenario:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\experiments\01_successful_delivery_bdi.ps1
 ```
 
-## Telemetry And Beliefs
+Run the telemetry-driven production failure scenario:
 
-Telemetry originates in `app/payment_service/service.py`:
-
-```text
-payment_service_requests_total
-payment_service_errors_total
-payment_service_request_latency_seconds
-payment_service_health
+```powershell
+powershell -ExecutionPolicy Bypass -File .\experiments\02_telemetry_production_failure_bdi.ps1
 ```
 
-Prometheus obtains it through `runtime/prometheus/prometheus.yml`, which scrapes:
+Run all numbered experiments:
 
-```text
-payment-staging:8000/metrics
-payment-production:8000/metrics
+```powershell
+powershell -ExecutionPolicy Bypass -File .\experiments\run_all_numbered_experiments.ps1
 ```
 
-In the real Jason controller path, telemetry is converted into BDI percepts in:
+Results are stored under:
 
 ```text
-bdi/src/env/CicdEnvironment.java
+experiments/results/<timestamp>/
 ```
 
-The live beliefs are stored inside the running Jason agent belief base. Inspect them with:
+The latest recorded comparison from this workspace is:
+
+```text
+experiments/results/20260825_124329/traditional_vs_bdi_comparison.md
+experiments/results/20260825_124329/traditional_vs_bdi_comparison_observed.md
+```
+
+## Manual Jason Run
+
+To start the agent directly:
+
+```powershell
+cd bdi
+$env:BDI_TELEMETRY_ENABLED="true"
+$env:BDI_TELEMETRY_INTERVAL_SECONDS="3"
+$env:BDI_TELEMETRY_GRACE_SECONDS="5"
+$env:BDI_OBSERVE_PRODUCTION_CANARY_MS="15000"
+jason project.mas2j
+```
+
+This starts Jason. Docker starts later when the agent chooses actions such as `deploy(candidate, staging)` or `deploy(candidate, production)`. Those actions are passed to `CicdEnvironment.java`, which runs the matching script in `cicd/actions/`.
+
+Inspect the live Jason belief base:
 
 ```powershell
 cd bdi
 jason agent mind deployment_agent
 ```
 
-Common evidence:
+Read the Java bridge log:
 
-```text
-metric(production,error_rate,high)[source(percept)]
-environment(production,unstable)[source(percept)]
-production_reliability_restored[source(self)]
-delivery_failed(candidate,telemetry_unstable)[source(self)]
-decision(rollback_production)[source(self)]
-status(rollback(production),passed)[source(percept)]
+```powershell
+cd bdi
+Get-Content .\logs\cicd_environment.log -Tail 80
 ```
 
-## Complete Telemetry Failure Path Example
+## Scenario Suite
 
-Recommended demo: `experiments/demo_failed_telemetry_path.ps1`.
+| Scenario                          | BDI capability demonstrated                                                                             |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `01_successful_delivery`          | Completes build, validation, staging, production, canary observation, and release success.              |
+| `02_telemetry_production_failure` | Uses real `/pay` traffic and Prometheus error-rate telemetry to trigger rollback and candidate failure. |
+| `03_high_latency`                 | Detects high latency and pauses/reobserves instead of blindly accepting the release.                    |
+| `04_observability_failure`        | Treats missing telemetry as uncertainty and escalates instead of assuming success.                      |
+| `05_transient_health_retry`       | Restores reliability after a transient health failure, then retries the same candidate.                 |
+| `06_gate_failures`                | Stops delivery when build, test, or security gates fail.                                                |
+| `07_rollback_unavailable`         | Requests manual intervention when rollback itself fails.                                                |
 
-```text
-1. Demo script starts Jason with PAYMENT_PRODUCTION_FAILURE_MODE=none and PAYMENT_PRODUCTION_FORCE_ERROR_RATE=0.20.
-2. Jason deploys candidate through deploy(candidate, production).
-3. CicdEnvironment calls cicd/actions/deploy.sh production candidate.
-4. Production /health passes.
-5. Jason starts observe(production, canary).
-6. Demo sends controlled POST /pay traffic as stimulus only.
-7. service.py records request metrics and probabilistic failed /pay requests in Prometheus metrics.
-8. Prometheus scrapes /metrics.
-9. CicdEnvironment queries Prometheus.
-10. CicdEnvironment updates metric(production,error_rate,high).
-11. CicdEnvironment updates environment(production,unstable).
-12. CicdEnvironment emits observation(production,canary,unstable).
-13. deployment_agent.asl selects production recovery.
-14. Agent executes rollback(production).
-15. CicdEnvironment calls cicd/actions/rollback.sh production.
-16. Rollback redeploys stable production.
-17. Agent records production_reliability_restored.
-18. Agent records delivery_failed(candidate,telemetry_unstable).
-```
-
-Expected log evidence:
+Each scenario has:
 
 ```text
-[CicdEnvironment][telemetry] production error_rate=0.xxxx(high) ... environment=unstable
-[CicdEnvironment][decision] recovery_reason reason=telemetry_unstable
-[CicdEnvironment] action ... cicd\actions\rollback.sh production
-[CicdEnvironment] percept status(rollback(production), passed)
-[CicdEnvironment][decision] production_reliability_restored reason=telemetry_unstable
-[CicdEnvironment][decision] delivery_failed reason=telemetry_unstable
+experiments/NN_name.md
+experiments/NN_name_bdi.ps1
+experiments/NN_name_traditional.ps1
 ```
 
-Necessary files for that scenario:
+The manual overview is:
 
 ```text
-bdi/project.mas2j
-bdi/deployment_agent.asl
-bdi/src/env/CicdEnvironment.java
-cicd/actions/build.sh
-cicd/actions/test.sh
-cicd/actions/security_scan.sh
-cicd/actions/deploy.sh
-cicd/actions/health_check.sh
-cicd/actions/rollback.sh
-app/payment_service/service.py
-app/payment_service/Dockerfile
-app/payment_service/requirements.txt
-docker-compose.yml
-runtime/prometheus/prometheus.yml
-telemetry/thresholds.yml
-experiments/demo_failed_telemetry_path.md
-experiments/demo_failed_telemetry_path.ps1
+experiments/manual_demo_pipeline.md
 ```
 
-## Goal-Persistence Proof Case
+## Traditional vs BDI Comparison
 
-The focused recoverable-failure test uses a one-time production health failure:
+Both controllers use the same public shell actions under `cicd/actions/`.
+
+The traditional path follows a fixed sequence. It can build, test, deploy, and health-check, but it does not maintain a Jason belief base or select AgentSpeak recovery plans.
+
+The BDI path can use the same actions while also responding to symbolic beliefs such as:
 
 ```text
-health_check(production) fails once
--> Jason restores production reliability with rollback
--> Jason verifies recovered production
--> Jason retries the same candidate
--> Jason records delivery_succeeded(candidate)
+status(test,failed)
+metric(production,error_rate,high)
+environment(production,unstable)
+telemetry(production,unavailable)
 ```
 
-Observed evidence:
+This makes the comparison fair at the action level while highlighting the difference in controller behavior.
+
+## Important Environment Variables
+
+Application variables configure the Dockerized payment service:
+
+| Variable                                                           | Meaning                                                                                                                                         |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PAYMENT_STAGING_FAILURE_MODE` / `PAYMENT_PRODUCTION_FAILURE_MODE` | Maps into the container as `FAILURE_MODE`; values like `none`, `pay_error`, `refund_error`, or `unhealthy` change service behavior.             |
+| `PAYMENT_PRODUCTION_FORCE_ERROR_RATE`                              | Maps into the container as `FORCE_ERROR_RATE`; gives each real business request a probability of failure. It does not create traffic by itself. |
+| `PAYMENT_PRODUCTION_EXTRA_LATENCY_MS`                              | Maps into the container as `EXTRA_LATENCY_MS`; adds request latency for latency scenarios.                                                      |
+
+BDI variables configure the Java/Jason environment:
+
+| Variable                           | Meaning                                                                                         |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `BDI_TELEMETRY_ENABLED`            | Enables Prometheus polling in `CicdEnvironment.java`.                                           |
+| `BDI_TELEMETRY_INTERVAL_SECONDS`   | Controls the polling interval.                                                                  |
+| `BDI_TELEMETRY_GRACE_SECONDS`      | Gives the system time before treating telemetry as meaningful.                                  |
+| `BDI_OBSERVE_PRODUCTION_CANARY_MS` | Controls how long `observe(production, canary)` waits while telemetry changes can arrive.       |
+| `BDI_FORCE_*`                      | Test hooks read by the Java environment to force action failures without editing shell scripts. |
+
+For telemetry-driven scenarios, real traffic still has to be generated. For example, `FORCE_ERROR_RATE=0.20` means roughly 20 percent of real `/pay` requests fail, and those failures update the app metrics that Prometheus scrapes.
+
+## Useful URLs
 
 ```text
-goal_persistence_test=True
-[CicdEnvironment][decision] production_reliability_restored reason=health_failed
-[CicdEnvironment][decision] rollback_then_retry_production reason=health_failed
-[CicdEnvironment][decision] continue_deploy_candidate reason=health_failed
-[CicdEnvironment][decision] delivery_succeeded reason=candidate
+Staging health:     http://localhost:8001/health
+Production health:  http://localhost:8002/health
+Production metrics: http://localhost:8002/metrics
+Prometheus:         http://localhost:9090
 ```
+
+`/pay` and `/refund` are POST endpoints. Opening them directly in a browser with GET may show `Method Not Allowed`, which is expected.
 
 ## Documentation Map
 
-| Document                                    | Purpose                                                        |
-| ------------------------------------------- | -------------------------------------------------------------- |
-| `docs/extra_information.md`                 | Current architecture, diagrams, goal outcomes, and demo story. |
-| `experiments/manual_demo_pipeline.md`       | Manual demo workflow and scenario trigger guidance.            |
-| `experiments/demo_successful_path.md`       | Step-by-step successful-path demo.                             |
-| `experiments/demo_failed_telemetry_path.md` | Step-by-step telemetry-driven failed-path demo.                |
-| `bdi/README.md`                             | Jason-specific runtime notes.                                  |
-| `bdi/audit_current_runtime.md`              | Audit of legacy modeled traces vs real Jason execution.        |
+| Document                              | Purpose                                                                                   |
+| ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `docs/project_guide.md`               | Beginner-friendly project guide with phases, architecture, variables, and current status. |
+| `docs/extra_information.md`           | More detailed current architecture and execution workflow.                                |
+| `experiments/manual_demo_pipeline.md` | Common manual demo process and scenario trigger guidance.                                 |
+| `bdi/README.md`                       | Jason-specific runtime notes.                                                             |
 
 ## Limitations
 
-This prototype does not claim production readiness. It does not implement Kubernetes, cloud deployment, multi-agent coordination, machine learning, persistent event storage, or real payment processing.
+This is a local research prototype. It does not implement Kubernetes, cloud deployment, production secrets, persistent event storage, multi-agent coordination, machine learning, or production-grade incident response.
 
-The reliable research claim is narrower: a Jason BDI controller can invoke the same CI/CD shell actions as a fixed pipeline, perceive action and Prometheus results as beliefs, distinguish candidate delivery outcomes from production reliability restoration, and choose context-sensitive plans such as delivery success, delivery failure, delivery deferral, rollback, pause/reobserve, or manual intervention.
+Some failure cases use Java-side test hooks such as `BDI_FORCE_BUILD_FAIL` so the agent can be tested without permanently modifying CI/CD scripts. Telemetry-driven scenarios use actual service traffic, service metrics, Prometheus scraping, Java polling, and Jason percept updates.
+
+The current research claim is intentionally narrow: a plain Jason BDI controller can execute the same CI/CD action interface as a traditional pipeline, perceive action and telemetry results as beliefs, and choose more explainable context-sensitive responses than a fixed sequence.
