@@ -120,7 +120,7 @@ Common evidence:
 metric(production,error_rate,high)[source(percept)]
 environment(production,unstable)[source(percept)]
 production_reliability_restored[source(self)]
-delivery_failed(candidate,candidate_unsafe)[source(self)]
+delivery_failed(candidate,telemetry_unstable)[source(self)]
 decision(rollback_production)[source(self)]
 status(rollback(production),passed)[source(percept)]
 ```
@@ -130,13 +130,13 @@ status(rollback(production),passed)[source(percept)]
 Recommended demo: `experiments/demo_failed_telemetry_path.ps1`.
 
 ```text
-1. Demo script starts Jason with PAYMENT_PRODUCTION_FAILURE_MODE=pay_error.
+1. Demo script starts Jason with PAYMENT_PRODUCTION_FAILURE_MODE=none and PAYMENT_PRODUCTION_FORCE_ERROR_RATE=0.20.
 2. Jason deploys candidate through deploy(candidate, production).
 3. CicdEnvironment calls cicd/actions/deploy.sh production candidate.
 4. Production /health passes.
 5. Jason starts observe(production, canary).
-6. Demo sends POST /pay traffic as stimulus only.
-7. service.py records failed /pay requests in Prometheus metrics.
+6. Demo sends controlled POST /pay traffic as stimulus only.
+7. service.py records request metrics and probabilistic failed /pay requests in Prometheus metrics.
 8. Prometheus scrapes /metrics.
 9. CicdEnvironment queries Prometheus.
 10. CicdEnvironment updates metric(production,error_rate,high).
@@ -147,18 +147,18 @@ Recommended demo: `experiments/demo_failed_telemetry_path.ps1`.
 15. CicdEnvironment calls cicd/actions/rollback.sh production.
 16. Rollback redeploys stable production.
 17. Agent records production_reliability_restored.
-18. Agent records delivery_failed(candidate,candidate_unsafe).
+18. Agent records delivery_failed(candidate,telemetry_unstable).
 ```
 
 Expected log evidence:
 
 ```text
-[CicdEnvironment][telemetry] production error_rate=1.0000(high) ... environment=unstable
+[CicdEnvironment][telemetry] production error_rate=0.xxxx(high) ... environment=unstable
 [CicdEnvironment][decision] recovery_reason reason=telemetry_unstable
 [CicdEnvironment] action ... cicd\actions\rollback.sh production
 [CicdEnvironment] percept status(rollback(production), passed)
-[CicdEnvironment][decision] production_reliability_restored reason=candidate_unsafe
-[CicdEnvironment][decision] delivery_failed reason=candidate_unsafe
+[CicdEnvironment][decision] production_reliability_restored reason=telemetry_unstable
+[CicdEnvironment][decision] delivery_failed reason=telemetry_unstable
 ```
 
 Necessary files for that scenario:

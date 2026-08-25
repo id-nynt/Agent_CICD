@@ -39,10 +39,10 @@ but Jason must choose the decision.
 For example:
 
 ```text
-PAYMENT_PRODUCTION_FAILURE_MODE=pay_error
+PAYMENT_PRODUCTION_FORCE_ERROR_RATE=0.20
 ```
 
-does not choose rollback. It only makes the application produce errors when `/pay` is called.
+does not choose rollback. It only gives each real business request a probability of failing when `/pay` is called.
 
 The rollback decision should appear only after:
 
@@ -198,6 +198,73 @@ Check Prometheus-derived telemetry:
 py .\telemetry\prometheus_adapter.py production --pretty
 ```
 
+## Numbered Scenario Catalog
+
+Use these numbered guides for the current experiment set. Each guide has:
+
+```text
+manual BDI workflow
+expected MAS/log/belief evidence
+quick BDI automation command
+traditional fixed-pipeline command
+```
+
+| Code | Scenario | Main BDI capability | Guide |
+| --- | --- | --- | --- |
+| `01` | Successful delivery | Complete root goal when all beliefs stay healthy. | `experiments/01_successful_delivery.md` |
+| `02` | Telemetry-driven production failure | React to real Prometheus error-rate degradation and rollback. | `experiments/02_telemetry_production_failure.md` |
+| `03` | High latency | Pause/reobserve instead of blindly treating every telemetry issue the same. | `experiments/03_high_latency.md` |
+| `04` | Observability failure | Distinguish app failure from missing telemetry and escalate uncertainty. | `experiments/04_observability_failure.md` |
+| `05` | Transient health failure and retry | Restore reliability, then continue pursuing candidate delivery. | `experiments/05_transient_health_retry.md` |
+| `06` | Build/test/security gate failures | Stop delivery when early gate percepts fail. | `experiments/06_gate_failures.md` |
+| `07` | Rollback unavailable | Escalate to manual intervention when recovery action fails. | `experiments/07_rollback_unavailable.md` |
+
+Quick automation commands:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\experiments\01_successful_delivery_bdi.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\02_telemetry_production_failure_bdi.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\03_high_latency_bdi.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\04_observability_failure_bdi.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\05_transient_health_retry_bdi.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\06_gate_failures_bdi.ps1 -Gate build
+powershell -ExecutionPolicy Bypass -File .\experiments\07_rollback_unavailable_bdi.ps1
+```
+
+Traditional comparison commands:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\experiments\01_successful_delivery_traditional.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\02_telemetry_production_failure_traditional.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\03_high_latency_traditional.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\04_observability_failure_traditional.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\05_transient_health_retry_traditional.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\06_gate_failures_traditional.ps1 -Gate build
+powershell -ExecutionPolicy Bypass -File .\experiments\07_rollback_unavailable_traditional.ps1
+```
+
+## Scenario Injection Cheat Sheet
+
+Set these before starting Jason only for the matching scenario:
+
+| Scenario | Injection |
+| --- | --- |
+| `01` successful delivery | No error injection. Use `PAYMENT_PRODUCTION_FORCE_ERROR_RATE=0` and `PAYMENT_PRODUCTION_EXTRA_LATENCY_MS=0`. |
+| `02` telemetry-driven failure | Use `PAYMENT_PRODUCTION_FAILURE_MODE=none`, `PAYMENT_PRODUCTION_FORCE_ERROR_RATE=0.20`, then send real `/pay` traffic during canary. |
+| `03` high latency | Use `PAYMENT_PRODUCTION_EXTRA_LATENCY_MS=800`, then send real `/pay` traffic during canary. |
+| `04` observability failure | Use `BDI_PROMETHEUS_URL=http://localhost:19090` so Java cannot query Prometheus. |
+| `05` transient health retry | Use `BDI_FORCE_HEALTH_CHECK_PRODUCTION_FAIL_ONCE=true`. |
+| `06` gate failures | Use one of `BDI_FORCE_BUILD_FAIL=true`, `BDI_FORCE_TEST_FAIL=true`, or `BDI_FORCE_SECURITY_SCAN_FAIL=true`. |
+| `07` rollback unavailable | Use telemetry failure setup plus `BDI_FORCE_ROLLBACK_PRODUCTION_FAIL=true`. |
+
+Important distinction:
+
+```text
+PAYMENT_* variables affect the app container after deploy/recreate.
+BDI_FORCE_* variables are Java-environment test hooks that create action-result percepts.
+Only real traffic plus Prometheus metrics proves telemetry-driven behavior.
+```
+
 ## Case 1: Successful Path
 
 Goal:
@@ -269,7 +336,7 @@ Goal:
 prove Jason reacts to a real environment/telemetry change before accepting release_complete
 ```
 
-Start Jason with production candidate configured to fail `/pay`:
+Start Jason with production candidate configured for probabilistic `/pay` failures:
 
 ```powershell
 cd C:\NHI\2026_IT-Project\260023_BDI_CICD\bdi
@@ -277,11 +344,11 @@ cd C:\NHI\2026_IT-Project\260023_BDI_CICD\bdi
 $env:BDI_TELEMETRY_ENABLED="true"
 $env:BDI_TELEMETRY_INTERVAL_SECONDS="3"
 $env:BDI_TELEMETRY_GRACE_SECONDS="5"
-$env:BDI_OBSERVE_PRODUCTION_CANARY_MS="25000"
+$env:BDI_OBSERVE_PRODUCTION_CANARY_MS="35000"
 
 $env:PAYMENT_STAGING_FAILURE_MODE="none"
-$env:PAYMENT_PRODUCTION_FAILURE_MODE="pay_error"
-$env:PAYMENT_PRODUCTION_FORCE_ERROR_RATE="0"
+$env:PAYMENT_PRODUCTION_FAILURE_MODE="none"
+$env:PAYMENT_PRODUCTION_FORCE_ERROR_RATE="0.20"
 $env:PAYMENT_PRODUCTION_EXTRA_LATENCY_MS="0"
 
 jason project.mas2j
@@ -300,11 +367,11 @@ Then, in another terminal, trigger real business traffic:
 ```powershell
 cd C:\NHI\2026_IT-Project\260023_BDI_CICD
 
-1..12 | ForEach-Object {
+1..80 | ForEach-Object {
   try {
     Invoke-RestMethod -Method POST -Uri http://localhost:8002/pay -ContentType "application/json" -Body "{`"amount`": $_}"
   } catch {
-    "pay request failed as expected"
+    "pay request failed as part of configured error rate"
   }
 }
 ```
@@ -315,17 +382,19 @@ What this proves:
 The trigger is not a BDI_FORCE flag.
 The trigger is application behavior plus real HTTP traffic.
 Jason must perceive the result through Prometheus telemetry.
+FORCE_ERROR_RATE does not create requests by itself; it only changes the probability that real requests fail.
 ```
 
 Watch for:
 
 ```text
-[CicdEnvironment][telemetry] production error_rate=1.0000(high) ... environment=unstable
+[CicdEnvironment][telemetry] production error_rate=0.xxxx(high) ... environment=unstable
 [CicdEnvironment] percept observation(production, canary, unstable)
 [CicdEnvironment][decision] recovery_reason reason=telemetry_unstable
 [CicdEnvironment] action ... rollback.sh production
 [CicdEnvironment] percept status(rollback(production), passed)
-[CicdEnvironment][decision] rollback_production
+[CicdEnvironment][decision] production_reliability_restored reason=telemetry_unstable
+[CicdEnvironment][decision] delivery_failed reason=telemetry_unstable
 ```
 
 Expected agent beliefs:
@@ -336,8 +405,8 @@ environment(production,unstable)[source(percept)]
 observation(production,canary,unstable)[source(percept)]
 recovery_reason(telemetry_unstable)[source(self)]
 production_reliability_restored[source(self)]
-delivery_failed(candidate,candidate_unsafe)[source(self)]
-decision(rollback_production)[source(self)]
+delivery_failed(candidate,telemetry_unstable)[source(self)]
+decision(delivery_failed)[source(self)]
 ```
 
 Final version should be:

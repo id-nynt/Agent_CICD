@@ -1,118 +1,146 @@
-# Extra Information: Current Architecture, Diagrams, And Workflow
+# Extra Information: Current Architecture And Workflow
 
-This document summarizes the current version of the BDI CI/CD prototype.
+This document explains the current BDI CI/CD prototype as it works now.
 
-It reflects the newer implementation where Jason does not immediately accept a release after `/health` passes. Instead, the agent enters a production canary observation window so telemetry can change beliefs before the final decision.
+It is a companion to `docs/project_guide.md` and the numbered experiment guides in `experiments/`.
 
-## Project Idea In One Paragraph
+## 1. Project In One Paragraph
 
-This project compares a fixed CI/CD pipeline with a Jason BDI controller. Both use the same local payment service and the same shell action interface under `cicd/actions/`. The difference is the controller. A traditional pipeline follows a fixed sequence and usually accepts production when scripts and `/health` pass. The BDI controller keeps symbolic beliefs about action results and production telemetry, then selects plans such as `delivery_succeeded`, `delivery_failed`, `delivery_deferred`, `production_reliability_restored`, `rollback_production`, `pause_reobserve`, or `manual_intervention_required`.
+This project compares a fixed CI/CD pipeline with a Jason BDI controller. Both paths use the same local payment service, Docker Compose environment, Prometheus metrics, and shell action scripts under `cicd/actions/`. The difference is the controller. The traditional path runs a fixed sequence. The BDI path uses Jason beliefs, goals, and plans to decide whether to deliver the candidate, fail delivery, defer delivery, rollback production, pause/reobserve, retry, or request manual intervention.
 
-## Current Controller Boundary
+The current root objective is:
 
-The real BDI path is:
+```text
+deliver the candidate successfully while preserving production reliability
+```
+
+Rollback is not counted as candidate delivery success. Rollback is a safety action that can restore production reliability while the candidate delivery may still fail or be deferred.
+
+## 2. Current Active Runtime Path
+
+The real demo path is:
 
 ```text
 bdi/project.mas2j
 -> bdi/deployment_agent.asl
 -> bdi/src/env/CicdEnvironment.java
 -> cicd/actions/*.sh
--> Docker Compose payment service + Prometheus
+-> docker-compose.yml
+-> app/payment_service/service.py
+-> runtime/prometheus/prometheus.yml
 ```
 
-The legacy/scaffolding path is separate:
+What starts the demo:
+
+```powershell
+cd C:\NHI\2026_IT-Project\260023_BDI_CICD\bdi
+jason project.mas2j
+```
+
+This starts Jason, not Docker directly. Docker starts later when the Jason agent calls `deploy(...)`, Java receives that Jason action, and `CicdEnvironment.java` runs `cicd/actions/deploy.sh`, which runs `docker compose up`.
+
+## 3. Current Legacy Or Historical Path
+
+These files are not needed for the supervisor demo:
 
 ```text
 bdi/cicd_agent.asl
 bdi/run_agent_for_scenario.sh
 telemetry/generated_beliefs/
+telemetry/live/
+simulation/
+upgrade_hooks/
 experiments/archive/
 ```
 
-Those legacy files can be useful for historical explanation, but they are not the strongest current demo evidence.
+They are useful as research history, but the current evidence should come from the active runtime path above.
 
-## Diagram: Traditional Pipeline Vs BDI Controller
+## 4. Component Diagram
 
 ```text
-                         SAME LOCAL SYSTEM
-
-                  payment service candidate
-                            |
-                            v
-                  same shell action scripts
-                            |
-              +-------------+-------------+
-              |                           |
-              v                           v
-       Traditional pipeline          Jason BDI controller
-       fixed control flow            beliefs + goals + plans
-              |                           |
-              v                           v
-       build/test/deploy            build/test/deploy actions
-              |                           |
-              v                           v
-       production /health           production /health
-              |                           |
-              v                           v
-       release success              observe(production, canary)
-                                          |
-                                          v
-                                Prometheus telemetry beliefs
-                                          |
-                         +----------------+----------------+
-                         |                                 |
-                         v                                 v
-              stable -> delivery_succeeded     unstable -> recovery plan
-                                                        |
-                                                        v
-                                                 rollback(production)
+User / experiment script
+        |
+        v
+Jason MAS
+        |
+        v
+deployment_agent.asl
+        |
+        | Jason external actions:
+        | build(candidate)
+        | test(candidate)
+        | deploy(candidate, production)
+        | rollback(production)
+        v
+CicdEnvironment.java
+        |
+        | runs shell scripts
+        v
+cicd/actions/*.sh
+        |
+        | docker compose up / health checks / rollback
+        v
+Docker Compose
+        |
+        +--> payment-staging      http://localhost:8001
+        |
+        +--> payment-production   http://localhost:8002
+        |
+        `--> prometheus           http://localhost:9090
 ```
 
-## Diagram: Current BDI Perception-Reasoning-Action Loop
+## 5. Perception-Reasoning-Action Loop
 
 ```text
-Application/environment changes
+Jason chooses action
         |
         v
-Payment service exposes /metrics
+CicdEnvironment executes shell script
         |
         v
-Prometheus scrapes /metrics
+Docker/app state changes
+        |
+        v
+App exposes /metrics
+        |
+        v
+Prometheus scrapes metrics
         |
         v
 CicdEnvironment polls Prometheus
         |
         v
-CicdEnvironment applies thresholds
+Java converts numeric telemetry into symbolic percepts
         |
         v
-Jason percepts are updated:
-  metric(production,error_rate,high/normal)
-  metric(production,latency,high/normal)
-  metric(production,availability,high/low)
-  environment(production,stable/unstable)
+Jason belief base changes
         |
         v
-deployment_agent receives belief/event changes
+AgentSpeak plan becomes applicable
         |
         v
-AgentSpeak context conditions select a plan
-        |
-        v
-Jason invokes an external action:
-  deploy(...)
-  health_check(...)
-  rollback(...)
-  observe(...)
-        |
-        v
-CicdEnvironment executes or observes the real local system
-        |
-        v
-New state and telemetry are perceived again
+Jason chooses next action or final outcome
 ```
 
-## Current Release Workflow
+This is the research loop:
+
+```text
+perceive -> reason -> act -> perceive again
+```
+
+## 6. BDI Agent
+
+The current active agent is:
+
+```text
+bdi/deployment_agent.asl
+```
+
+It is registered in:
+
+```text
+bdi/project.mas2j
+```
 
 The root goal is:
 
@@ -120,297 +148,294 @@ The root goal is:
 !deliver_release(candidate)
 ```
 
-The current sequence is:
+The main goal structure is:
 
 ```text
-!prepare_candidate(candidate)
-  -> build(candidate)
-  -> status(build, passed/failed)
-
-!validate_candidate(candidate)
-  -> test(candidate)
-  -> status(test, passed/failed)
-  -> security_scan(candidate)
-  -> status(security_scan, passed/failed)
-
-!deploy_to_staging(candidate)
-  -> deploy(candidate, staging)
-  -> status(deploy(staging), passed/failed)
-
-!verify_staging
-  -> health_check(staging)
-  -> status(health_check(staging), passed/failed)
-  -> environment(staging, stable/unstable)
-
-!deploy_to_production(candidate)
-  -> deploy(candidate, production)
-  -> status(deploy(production), passed/failed)
-
-!verify_production
-  -> health_check(production)
-  -> status(health_check(production), passed/failed)
-
-!observe_production_canary
-  -> observe(production, canary)
-  -> observation(production, canary, stable/unstable/unknown)
-
-!maintain_reliability
-  -> delivery_succeeded, delivery_failed, delivery_deferred,
-     rollback, pause/reobserve, or manual intervention
+!deliver_release(candidate)
+|
+|-- !prepare_candidate(candidate)
+|   `-- build(candidate)
+|
+|-- !validate_candidate(candidate)
+|   |-- test(candidate)
+|   `-- security_scan(candidate)
+|
+|-- !deploy_to_staging(candidate)
+|
+|-- !verify_staging
+|
+|-- !deploy_to_production(candidate)
+|
+|-- !verify_production
+|
+|-- !observe_production_canary
+|
+`-- !maintain_reliability
 ```
 
-The important current addition is:
+Current outcome beliefs:
 
 ```text
-observe(production, canary)
-```
-
-This creates time for Prometheus and `CicdEnvironment` to update telemetry beliefs before Jason records a delivery outcome.
-
-## Current Goal Hierarchy
-
-```text
-!start_controller
-`-- !deliver_release(candidate)
-    |-- !prepare_candidate(candidate)
-    |   `-- !run_build(candidate)
-    |
-    |-- !validate_candidate(candidate)
-    |   |-- !run_tests(candidate)
-    |   `-- !run_security_scan(candidate)
-    |
-    |-- !deploy_to_staging(candidate)
-    |
-    |-- !verify_staging
-    |
-    |-- !deploy_to_production(candidate)
-    |
-    |-- !verify_production
-    |
-    |-- !observe_production_canary
-    |
-    `-- !maintain_reliability
-```
-
-## Current Recovery And Decision Model
-
-### Stop Release
-
-Used for early gate failures:
-
-```text
-status(build, failed)         -> !stop_release(build_failed)
-status(test, failed)          -> !stop_release(test_failed)
-status(security_scan, failed) -> !stop_release(security_failed)
-staging unstable              -> !stop_release(staging_unstable)
-```
-
-Decision evidence:
-
-```text
-decision(delivery_failed)
+delivery_succeeded(candidate)
 delivery_failed(candidate, Reason)
-delivery_failure_reason(...)
-
-or
-
-decision(delivery_deferred)
 delivery_deferred(candidate, Reason)
-delivery_defer_reason(...)
-```
-
-### Production Recovery
-
-Used for production failure or production telemetry instability:
-
-```text
-status(deploy(production), failed)
-  -> !recover_production(deploy_failed)
-
-status(health_check(production), failed)
-  -> !recover_production(health_failed)
-
-observation(production, canary, unstable)
-  -> !recover_production(telemetry_unstable)
-
-environment(production, unstable) after deployment
-  -> recovery, pause/reobserve, or manual intervention depending on context
-```
-
-Decision evidence:
-
-```text
-recovery_reason(...)
 production_reliability_restored
-production_reliability_restored(...)
-decision(rollback_production)
-status(rollback(production), passed)
+production_reliability_restored(Reason)
 ```
 
-### Pause/Reobserve
-
-Used when the agent should not immediately rollback:
+Current decision marker beliefs:
 
 ```text
-metric(production,latency,high)
-and not metric(production,error_rate,high)
-  -> !pause_reobserve(high_latency)
-
-telemetry(production,unavailable)
-  -> !pause_reobserve(network_suspected)
-```
-
-Decision evidence:
-
-```text
+decision(delivery_succeeded)
+decision(delivery_failed)
+decision(delivery_deferred)
+decision(release_complete)
 decision(pause_reobserve)
-reobserve_reason(high_latency)
-reobserve_reason(network_suspected)
-```
-
-### Rollback Then Retry
-
-The current model supports retrying the same candidate only for transient production health failure:
-
-```text
-health_check(production) fails
--> rollback(production)
--> recovered production health passes
--> continue_deploy_candidate
--> deploy candidate to production again
-```
-
-It does not retry the same candidate after high-error telemetry, because that likely means the candidate behavior itself is faulty.
-
-Decision evidence:
-
-```text
+decision(rollback_production)
 decision(rollback_then_retry_production)
 decision(continue_deploy_candidate)
-delivery_succeeded(candidate)
-decision(delivery_succeeded)
+decision(manual_intervention_required)
 ```
 
-## Telemetry Classification Rules
+The agent now has outcome guards so if delivery has already failed or been deferred, a delayed canary completion cannot later overwrite the outcome as success.
 
-Thresholds are loaded from:
+## 7. Java Environment
+
+The bridge is:
 
 ```text
-telemetry/thresholds.yml
+bdi/src/env/CicdEnvironment.java
 ```
 
-The current semantics are:
+It has two jobs.
 
-| Raw Prometheus metric | Rule | Jason percept |
+First, it executes actions requested by Jason:
+
+| Jason action | Java result |
+| --- | --- |
+| `build(candidate)` | Runs `cicd/actions/build.sh candidate`. |
+| `test(candidate)` | Runs `cicd/actions/test.sh candidate`. |
+| `security_scan(candidate)` | Runs `cicd/actions/security_scan.sh candidate`. |
+| `deploy(candidate, staging)` | Runs `cicd/actions/deploy.sh staging candidate`. |
+| `deploy(candidate, production)` | Runs `cicd/actions/deploy.sh production candidate`. |
+| `health_check(staging)` | Runs `cicd/actions/health_check.sh staging`. |
+| `health_check(production)` | Runs `cicd/actions/health_check.sh production`. |
+| `rollback(production)` | Runs `cicd/actions/rollback.sh production`. |
+| `observe(production, canary)` | Waits for the canary window while telemetry polling continues. |
+
+Second, it updates Jason percepts:
+
+| Source | Jason percept |
+| --- | --- |
+| Script exit code `0` | `status(..., passed)` |
+| Script exit code non-zero | `status(..., failed)` |
+| Health check passed | `environment(..., stable)` |
+| Health check failed | `environment(..., unstable)` |
+| Prometheus query result | `metric(production,...,...)` |
+| Telemetry summary | `environment(production,stable/unstable)` |
+| Observation window result | `observation(production,canary,stable/unstable/unknown)` |
+
+## 8. App And Docker
+
+The app is:
+
+```text
+app/payment_service/service.py
+```
+
+Docker Compose starts two copies:
+
+```text
+payment-staging      http://localhost:8001
+payment-production   http://localhost:8002
+```
+
+The app endpoints are:
+
+| Endpoint | Method | Meaning |
 | --- | --- | --- |
-| Error rate | `> 0.05` | `metric(production,error_rate,high)` |
-| Error rate | `<= 0.05` | `metric(production,error_rate,normal)` |
-| P95 latency | `> 500 ms` | `metric(production,latency,high)` |
-| P95 latency | `<= 500 ms` | `metric(production,latency,normal)` |
-| Availability | `< 0.99` | `metric(production,availability,low)` |
-| Availability | `>= 0.99` | `metric(production,availability,high)` |
+| `/health` | `GET` | Health check used by CI/CD scripts. |
+| `/pay` | `POST` | Business request used for traffic/error telemetry. |
+| `/refund` | `POST` | Business request used for traffic/error telemetry. |
+| `/metrics` | `GET` | Prometheus metrics endpoint. |
 
-Overall production state:
+Opening `/pay` or `/refund` in a browser uses `GET`, so `Method Not Allowed` is normal. Use `POST`.
 
-```text
-any bad metric -> environment(production,unstable)
-all normal     -> environment(production,stable)
-poll failure   -> telemetry(production,unavailable)
-                  network(production,suspected)
-                  environment(production,unstable)
+## 9. App Environment Variables
+
+The scenario variables you set in PowerShell are passed into Docker Compose, then into the container.
+
+Example:
+
+```powershell
+$env:PAYMENT_PRODUCTION_FAILURE_MODE="none"
+$env:PAYMENT_PRODUCTION_FORCE_ERROR_RATE="0.20"
 ```
 
-## Where Telemetry Comes From
+Docker Compose maps them:
 
-The payment service exposes:
+```text
+PAYMENT_PRODUCTION_FAILURE_MODE      -> FAILURE_MODE
+PAYMENT_PRODUCTION_FORCE_ERROR_RATE  -> FORCE_ERROR_RATE
+PAYMENT_PRODUCTION_EXTRA_LATENCY_MS  -> EXTRA_LATENCY_MS
+```
+
+Then `service.py` reads:
+
+```text
+FAILURE_MODE
+FORCE_ERROR_RATE
+EXTRA_LATENCY_MS
+```
+
+Meaning:
+
+| Variable | Current demo use | Effect |
+| --- | --- | --- |
+| `FAILURE_MODE=none` | Normal/success and probabilistic telemetry demos. | No deterministic failure mode. |
+| `FAILURE_MODE=pay_error` | Optional deterministic test only. | Every `/pay` request fails. |
+| `FORCE_ERROR_RATE=0.20` | Main telemetry failure demo. | Each real `/pay` or `/refund` request has about 20% chance to fail. |
+| `FORCE_ERROR_RATE=0` | Success/high-latency demos. | No random business failures. |
+| `EXTRA_LATENCY_MS=800` | High-latency demo. | Adds about 800 ms delay to requests. |
+| `EXTRA_LATENCY_MS=0` | Normal/error-rate demos. | No artificial latency. |
+
+Important:
+
+```text
+FORCE_ERROR_RATE does not create traffic.
+It only changes the probability that real requests fail.
+You or a script must still send POST /pay traffic.
+```
+
+## 10. Telemetry
+
+The app exposes Prometheus metrics at:
 
 ```text
 GET /metrics
 ```
 
-Prometheus scrapes metrics from the Docker services using:
+Prometheus config:
 
 ```text
 runtime/prometheus/prometheus.yml
 ```
 
-The Java environment queries Prometheus directly:
+Prometheus scrapes:
 
 ```text
-CicdEnvironment.java
+payment-staging:8000/metrics
+payment-production:8000/metrics
 ```
 
-It does not rely on generated belief files for the current live path.
+The main metrics are:
 
-## Current Timing Model
+| Metric | Meaning |
+| --- | --- |
+| `payment_service_requests_total` | Counts requests by version, method, endpoint, and status. |
+| `payment_service_errors_total` | Counts failed business requests. |
+| `payment_service_request_latency_seconds` | Records request latency histogram. |
+| `payment_service_health` | Health gauge: `1` healthy, `0` unhealthy. |
 
-Important environment variables:
+`CicdEnvironment.java` queries Prometheus and applies thresholds from:
 
 ```text
-BDI_TELEMETRY_ENABLED
-BDI_TELEMETRY_INTERVAL_SECONDS
-BDI_TELEMETRY_GRACE_SECONDS
-BDI_OBSERVE_PRODUCTION_CANARY_MS
+telemetry/thresholds.yml
 ```
 
-Typical demo values:
+Current symbolic mapping:
+
+| Numeric condition | Jason percept |
+| --- | --- |
+| error rate `> 0.05` | `metric(production,error_rate,high)` |
+| error rate `<= 0.05` | `metric(production,error_rate,normal)` |
+| p95 latency `> 500 ms` | `metric(production,latency,high)` |
+| p95 latency `<= 500 ms` | `metric(production,latency,normal)` |
+| availability `< 0.99` | `metric(production,availability,low)` |
+| availability `>= 0.99` | `metric(production,availability,high)` |
+
+Overall:
+
+```text
+any bad metric -> environment(production,unstable)
+all normal     -> environment(production,stable)
+Prometheus unavailable -> telemetry(production,unavailable)
+                          network(production,suspected)
+                          environment(production,unstable)
+```
+
+The active path does not use `telemetry/generated_beliefs/`. Those are legacy generated belief files.
+
+## 11. Timing Controls
+
+These variables are read by `CicdEnvironment.java`, not by the Flask app:
+
+| Variable | Meaning |
+| --- | --- |
+| `BDI_TELEMETRY_ENABLED=true/false` | Turns Prometheus polling on/off. |
+| `BDI_TELEMETRY_INTERVAL_SECONDS=3` | Poll Prometheus every 3 seconds. |
+| `BDI_TELEMETRY_GRACE_SECONDS=5` | Ignore production telemetry briefly after deploy/rollback. |
+| `BDI_OBSERVE_PRODUCTION_CANARY_MS=15000` | Keep canary observation open for 15 seconds. |
+| `BDI_OBSERVE_PRODUCTION_CANARY_MS=35000` | Longer canary window for manual traffic injection. |
+| `BDI_PROMETHEUS_URL=http://localhost:19090` | Observability-failure demo: intentionally wrong Prometheus URL. |
+
+Why timing matters:
+
+```text
+/health can pass quickly.
+Without canary time, Jason may record success too soon.
+The observation window gives time for traffic, Prometheus scraping, Java polling, and belief updates.
+```
+
+## 12. Current Main Scenario Set
+
+Use the numbered experiment files:
+
+| Code | Scenario | Main point |
+| --- | --- | --- |
+| `01` | Successful delivery | Jason completes delivery when beliefs stay healthy. |
+| `02` | Telemetry-driven production failure | Real `/pay` traffic changes metrics; Jason rolls back and fails candidate delivery. |
+| `03` | High latency | Jason pauses/reobserves instead of treating every problem as immediate rollback. |
+| `04` | Observability failure | Jason distinguishes telemetry unavailable from app failure. |
+| `05` | Transient health failure and retry | Jason restores reliability, then retries the same candidate. |
+| `06` | Build/test/security gate failures | Jason fails delivery when early action-result percepts fail. |
+| `07` | Rollback unavailable | Jason escalates to manual intervention when rollback fails. |
+
+Main guide:
+
+```text
+experiments/manual_demo_pipeline.md
+```
+
+Example commands:
 
 ```powershell
-$env:BDI_TELEMETRY_ENABLED="true"
-$env:BDI_TELEMETRY_INTERVAL_SECONDS="3"
-$env:BDI_TELEMETRY_GRACE_SECONDS="5"
-$env:BDI_OBSERVE_PRODUCTION_CANARY_MS="25000"
+powershell -ExecutionPolicy Bypass -File .\experiments\01_successful_delivery_bdi.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\02_telemetry_production_failure_bdi.ps1
+powershell -ExecutionPolicy Bypass -File .\experiments\05_transient_health_retry_bdi.ps1
 ```
 
-Why this matters:
+Traditional comparison scripts are beside them:
 
 ```text
-Production /health may pass quickly.
-The canary observation window keeps Jason from finalizing immediately.
-During that window, traffic can change metrics.
-Prometheus can scrape those metrics.
-CicdEnvironment can convert them into beliefs.
-Jason can choose a plan before it records `delivery_succeeded(candidate)`.
+experiments/01_successful_delivery_traditional.ps1
+experiments/02_telemetry_production_failure_traditional.ps1
+...
+experiments/07_rollback_unavailable_traditional.ps1
 ```
 
-## Full Example: Successful Path
+## 13. Full Example: Successful Delivery
 
 ```text
-Jason: !deliver_release(candidate)
-  |
-  v
-CicdEnvironment: build(candidate)
-  |
-  v
-Shell: cicd/actions/build.sh candidate
-  |
-  v
-Percept: status(build, passed)
-  |
-  v
-test/security/staging/production actions pass
-  |
-  v
-Percept: status(health_check(production), passed)
-  |
-  v
-Jason: observe(production, canary)
-  |
-  v
-CicdEnvironment polls telemetry during observation
-  |
-  v
-Percepts:
-  metric(production,error_rate,normal)
-  metric(production,latency,normal)
-  environment(production,stable)
-  observation(production,canary,stable)
-  |
-  v
-Jason outcome:
-  delivery_succeeded(candidate)
-  decision(delivery_succeeded)
-  decision(release_complete)
+Jason starts !deliver_release(candidate)
+-> build/test/security pass
+-> staging deploy and health pass
+-> production deploy and health pass
+-> observe(production, canary)
+-> telemetry remains stable
+-> observation(production,canary,stable)
+-> delivery_succeeded(candidate)
+-> release_complete
 ```
 
 Expected final production version:
@@ -419,70 +444,34 @@ Expected final production version:
 candidate
 ```
 
-Run guide:
+Guide:
 
 ```text
-experiments/demo_successful_path.md
+experiments/01_successful_delivery.md
 ```
 
-Automation:
+## 14. Full Example: Telemetry-Driven Production Failure
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\experiments\demo_successful_path.ps1
-```
-
-## Full Example: Telemetry-Driven Failure Path
-
-This is the strongest current demo because it does not use `BDI_FORCE_*` failure injection.
+This is currently the strongest supervisor demo because it uses real traffic and Prometheus metrics rather than direct belief injection.
 
 ```text
 Jason deploys candidate to production
-  |
-  v
-Production /health passes
-  |
-  v
-Jason starts observe(production, canary)
-  |
-  v
-User/script sends POST /pay traffic
-  |
-  v
-Payment service produces errors
-  |
-  v
-Prometheus scrapes /metrics
-  |
-  v
-CicdEnvironment polls Prometheus
-  |
-  v
-Percepts:
-  metric(production,error_rate,high)
-  environment(production,unstable)
-  observation(production,canary,unstable)
-  |
-  v
-Jason plan:
-  !recover_production(telemetry_unstable)
-  |
-  v
-Jason action:
-  rollback(production)
-  |
-  v
-CicdEnvironment:
-  cicd/actions/rollback.sh production
-  |
-  v
-Percept:
-  status(rollback(production), passed)
-  |
-  v
-Jason decision:
-  production_reliability_restored
-  delivery_failed(candidate,candidate_unsafe)
-  rollback_production
+-> production /health passes
+-> Jason starts observe(production, canary)
+-> script/user sends 80 real POST /pay requests
+-> PAYMENT_PRODUCTION_FORCE_ERROR_RATE=0.20 causes some requests to fail
+-> service.py records request and error counters
+-> Prometheus scrapes /metrics
+-> CicdEnvironment reads measured error_rate > 0.05
+-> Java updates:
+     metric(production,error_rate,high)
+     environment(production,unstable)
+-> AgentSpeak recovery plan becomes applicable
+-> Jason calls rollback(production)
+-> CicdEnvironment runs rollback.sh
+-> status(rollback(production),passed)
+-> production_reliability_restored(telemetry_unstable)
+-> delivery_failed(candidate,telemetry_unstable)
 ```
 
 Expected final production version:
@@ -491,124 +480,82 @@ Expected final production version:
 stable
 ```
 
-Run guide:
+Recent observed evidence:
 
 ```text
-experiments/demo_failed_telemetry_path.md
+[CicdEnvironment][telemetry] production error_rate=0.2222(high) ... environment=unstable
+[CicdEnvironment][decision] recovery_reason reason=telemetry_unstable
+[CicdEnvironment][decision] production_reliability_restored reason=telemetry_unstable
+[CicdEnvironment][decision] delivery_failed reason=telemetry_unstable
 ```
 
-Automation:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\experiments\demo_failed_telemetry_path.ps1
-```
-
-## Full Example: Goal Persistence After Recoverable Failure
-
-This is the clearest current demo that the agent keeps pursuing candidate delivery after a recoverable production problem.
+Guide:
 
 ```text
-Jason deploys candidate to production
-  |
-  v
+experiments/02_telemetry_production_failure.md
+```
+
+## 15. Full Example: Transient Health Failure And Retry
+
+This is the clearest goal-persistence proof.
+
+```text
 Production health check fails once
-  |
-  v
-Jason chooses recovery_reason(health_failed)
-  |
-  v
-Jason calls rollback(production)
-  |
-  v
-Production stable version is restored
-  |
-  v
-Jason records production_reliability_restored(health_failed)
-  |
-  v
-Jason records rollback_then_retry_production
-  |
-  v
-Jason verifies recovered production is healthy
-  |
-  v
-Jason records continue_deploy_candidate
-  |
-  v
-Jason deploys the same candidate again
-  |
-  v
-Production health and canary observation pass
-  |
-  v
-Jason records delivery_succeeded(candidate)
+-> Jason records recovery_reason(health_failed)
+-> Jason calls rollback(production)
+-> production reliability restored
+-> Jason records rollback_then_retry_production
+-> Jason verifies recovered production
+-> Jason records continue_deploy_candidate
+-> Jason deploys the same candidate again
+-> health and canary pass
+-> delivery_succeeded(candidate)
 ```
 
-Evidence from the focused test:
+Expected final production version:
 
 ```text
-goal_persistence_test=True
-[CicdEnvironment][decision] production_reliability_restored reason=health_failed
-[CicdEnvironment][decision] rollback_then_retry_production reason=health_failed
-[CicdEnvironment][decision] continue_deploy_candidate reason=health_failed
-[CicdEnvironment][decision] delivery_succeeded reason=candidate
+candidate
 ```
 
-What this proves:
+Guide:
 
 ```text
-Rollback is not treated as candidate delivery success.
-Rollback first restores production reliability.
-Then Jason explicitly continues pursuing the original candidate delivery goal.
+experiments/05_transient_health_retry.md
 ```
 
-## What Is Forced And What Is Real?
+## 16. What Is Real And What Is Forced
 
-### Real Telemetry-Driven Evidence
-
-These scenarios are the strongest proof that the agent perceives environment changes:
+Real telemetry-driven scenarios:
 
 ```text
-successful path
-production high error rate during canary
-high latency during canary
-Prometheus unavailable during canary
-transient telemetry recovery
+01 successful delivery
+02 telemetry-driven production failure
+03 high latency
+04 observability failure
 ```
 
-They work by changing application behavior or observability, sending real traffic, and letting Prometheus/Jason beliefs update.
+These rely on Docker/app behavior, real HTTP traffic, Prometheus scraping, and Java telemetry polling.
 
-### Controlled Action-Result Fault Injection
-
-These scenarios use `BDI_FORCE_*` variables:
+Controlled action-result fault injection:
 
 ```text
-build failure
-test failure
-security failure
-staging health failure
-production health failure
-rollback unavailable
+05 transient health failure and retry
+06 build/test/security gate failures
+07 rollback unavailable
 ```
 
-They are useful for testing BDI control flow after action-result percepts, but they are not the main proof of live telemetry reasoning.
+These use `BDI_FORCE_*` variables read by `CicdEnvironment.java`. They are useful for proving Jason control flow after failed action percepts, but they are not the same as live telemetry degradation.
 
-Current limitation:
+Important distinction:
 
 ```text
-Build/test/security failure cannot yet be triggered midway from another terminal.
-They are configured before Jason starts.
+PAYMENT_* variables configure the app container.
+BDI_* variables configure the Java/Jason environment.
+BDI_FORCE_* variables are test hooks for failed action-result percepts.
 ```
 
-To support true midway gate injection later, add a runtime control channel such as:
-
-```text
-runtime/control/fail_next_stage.txt
-```
-
-Then `CicdEnvironment.java` could consume the file before each action.
-
-## Codebase Map
+## 17. Codebase Map
 
 ```text
 PROJECT
@@ -616,7 +563,8 @@ PROJECT
 |-- app/
 |   `-- payment_service/
 |       |-- service.py
-|       `-- Dockerfile
+|       |-- Dockerfile
+|       `-- requirements.txt
 |
 |-- cicd/
 |   `-- actions/
@@ -627,6 +575,16 @@ PROJECT
 |       |-- health_check.sh
 |       `-- rollback.sh
 |
+|-- bdi/
+|   |-- project.mas2j
+|   |-- deployment_agent.asl
+|   |-- build.gradle
+|   |-- settings.gradle
+|   |-- src/env/
+|   |   `-- CicdEnvironment.java
+|   `-- logs/
+|       `-- cicd_environment.log
+|
 |-- runtime/
 |   |-- prometheus/
 |   |   `-- prometheus.yml
@@ -635,33 +593,44 @@ PROJECT
 |
 |-- telemetry/
 |   |-- thresholds.yml
-|   |-- prometheus_adapter.py
-|   `-- belief_mapper.py        legacy/helper, not the live Java path
-|
-|-- bdi/
-|   |-- project.mas2j
-|   |-- deployment_agent.asl
-|   |-- src/env/
-|   |   `-- CicdEnvironment.java
-|   `-- logs/
-|       `-- cicd_environment.log
+|   `-- prometheus_adapter.py
 |
 |-- experiments/
-|   |-- demo_successful_path.md
-|   |-- demo_successful_path.ps1
-|   |-- demo_failed_telemetry_path.md
-|   |-- demo_failed_telemetry_path.ps1
 |   |-- manual_demo_pipeline.md
-|   `-- archive/
-|       `-- older scenario-suite and comparison artifacts
+|   |-- scenario_lib.ps1
+|   |-- 01_successful_delivery.md
+|   |-- 02_telemetry_production_failure.md
+|   |-- 03_high_latency.md
+|   |-- 04_observability_failure.md
+|   |-- 05_transient_health_retry.md
+|   |-- 06_gate_failures.md
+|   `-- 07_rollback_unavailable.md
 |
 `-- docs/
+    |-- project_guide.md
     `-- extra_information.md
 ```
 
-## What To Watch In The MAS Console Or Log
+## 18. What To Watch During A Demo
 
-Jason AgentSpeak output:
+Best evidence log:
+
+```text
+bdi/logs/cicd_environment.log
+```
+
+Look for:
+
+```text
+[CicdEnvironment] action ...
+[CicdEnvironment][script] ...
+[CicdEnvironment] percept ...
+[CicdEnvironment][telemetry] ...
+[CicdEnvironment][observe] ...
+[CicdEnvironment][decision] ...
+```
+
+Jason console prints:
 
 ```text
 [deployment_agent][goal] ...
@@ -670,70 +639,45 @@ Jason AgentSpeak output:
 [deployment_agent][decision] ...
 ```
 
-Java environment output:
+Inspect live Jason beliefs:
 
-```text
-[CicdEnvironment] action ...
-[CicdEnvironment][script] ...
-[CicdEnvironment] exit_code=...
-[CicdEnvironment] percept ...
-[CicdEnvironment][telemetry] ...
-[CicdEnvironment][observe] ...
-[CicdEnvironment][decision] ...
+```powershell
+cd C:\NHI\2026_IT-Project\260023_BDI_CICD\bdi
+jason agent mind deployment_agent
 ```
 
-The same Java environment evidence is saved to:
+Check final production version:
 
-```text
-bdi/logs/cicd_environment.log
+```powershell
+cd C:\NHI\2026_IT-Project\260023_BDI_CICD
+Get-Content .\runtime\state\production_version.txt
 ```
 
-## Java Environment Summary
-
-`CicdEnvironment.java` is the bridge between Jason and the real local system.
+Expected examples:
 
 ```text
-Jason action -> Java bridge -> shell script -> Docker/payment service
+candidate  -> successful candidate delivery
+stable     -> rollback restored production after failed candidate delivery
 ```
 
-Examples:
+## 19. Best Supervisor Story
+
+Use this simple narrative:
 
 ```text
-build(candidate)              -> cicd/actions/build.sh candidate
-test(candidate)               -> cicd/actions/test.sh candidate
-security_scan(candidate)      -> cicd/actions/security_scan.sh candidate
-deploy(candidate, staging)    -> cicd/actions/deploy.sh staging candidate
-deploy(candidate, production) -> cicd/actions/deploy.sh production candidate
-health_check(production)      -> cicd/actions/health_check.sh production
-rollback(production)          -> cicd/actions/rollback.sh production
-observe(production, canary)   -> timed observation while telemetry polling continues
+The shell scripts are the same in both controllers.
+The traditional controller follows a fixed sequence.
+The Jason controller has a goal: deliver candidate while preserving reliability.
+It sees action results and Prometheus telemetry as beliefs.
+If everything remains healthy, it records delivery_succeeded(candidate).
+If /health passes but real /pay traffic creates high error telemetry, it rolls back and records delivery_failed(candidate,telemetry_unstable).
+If a production health problem is transient, it restores reliability and retries the same candidate.
 ```
 
-The same class also converts the real world back into Jason percepts:
+Recommended live demos:
 
 ```text
-script exit code -> status(..., passed/failed)
-health check     -> environment(..., stable/unstable)
-Prometheus query -> metric(...), environment(...)
-observation      -> observation(..., stable/unstable/unknown)
-```
-
-## Current Best Demo Story
-
-For supervisor review, lead with these two demos:
-
-```text
-1. Successful path:
-   experiments/demo_successful_path.md
-
-2. Telemetry-driven failed path:
-   experiments/demo_failed_telemetry_path.md
-```
-
-The failed path is the clearest BDI contribution:
-
-```text
-/health passes
-but /pay telemetry becomes bad during canary
-therefore Jason rolls back before accepting the release
+1. experiments/01_successful_delivery.md
+2. experiments/02_telemetry_production_failure.md
+3. experiments/05_transient_health_retry.md
 ```

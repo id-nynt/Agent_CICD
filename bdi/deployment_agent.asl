@@ -182,6 +182,14 @@ candidate(candidate).
      !handle_production_canary_observation.
 
 +!handle_production_canary_observation
+  : delivery_failed(Candidate, Reason)
+  <- .print("[deployment_agent][belief] canary completed after delivery already failed: ", Reason).
+
++!handle_production_canary_observation
+  : delivery_deferred(Candidate, Reason)
+  <- .print("[deployment_agent][belief] canary completed after delivery already deferred: ", Reason).
+
++!handle_production_canary_observation
   : observation(production, canary, stable) & environment(production, stable)
   <- .print("[deployment_agent][belief] production stable after canary observation").
 
@@ -217,11 +225,22 @@ candidate(candidate).
 
 // Reliability goal.
 +!maintain_reliability
-  : environment(production, stable) & candidate(Candidate)
+  : environment(production, stable)
+    & candidate(Candidate)
+    & not delivery_failed(Candidate, _)
+    & not delivery_deferred(Candidate, _)
   <- .print("[deployment_agent][goal] !maintain_reliability");
      -release_monitoring_enabled(production);
      +release_monitoring_enabled(production);
      !succeed_delivery(Candidate).
+
++!maintain_reliability
+  : delivery_failed(Candidate, Reason)
+  <- .print("[deployment_agent][goal] !maintain_reliability skipped because delivery already failed: ", Reason).
+
++!maintain_reliability
+  : delivery_deferred(Candidate, Reason)
+  <- .print("[deployment_agent][goal] !maintain_reliability skipped because delivery already deferred: ", Reason).
 
 +!maintain_reliability
   : environment(production, unstable) & candidate(Candidate)
@@ -366,6 +385,16 @@ candidate(candidate).
   <- .print("[deployment_agent][belief] production still unstable after reobserve");
      !restore_production_reliability(Reason);
      !fail_delivery(Candidate, Reason).
+
++!succeed_delivery(Candidate)
+  : delivery_failed(Candidate, Reason)
+  <- .print("[deployment_agent][outcome] delivery success skipped because delivery already failed: ", Reason);
+     !keep_alive.
+
++!succeed_delivery(Candidate)
+  : delivery_deferred(Candidate, Reason)
+  <- .print("[deployment_agent][outcome] delivery success skipped because delivery already deferred: ", Reason);
+     !keep_alive.
 
 +!succeed_delivery(Candidate)
   <- .print("[deployment_agent][outcome] delivery_succeeded(", Candidate, ")");

@@ -1,0 +1,183 @@
+﻿[
+    {
+        "code":  "01",
+        "scenario":  "Successful delivery",
+        "mode":  "BDI",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\01_successful_delivery_bdi.log",
+        "meaning":  "BDI completed the root delivery goal and recorded release_complete.",
+        "matched_patterns":  [
+                                 "delivery_succeeded reason=candidate",
+                                 "release_complete",
+                                 "production_version=candidate"
+                             ]
+    },
+    {
+        "code":  "01",
+        "scenario":  "Successful delivery",
+        "mode":  "Traditional",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\01_successful_delivery_traditional.log",
+        "meaning":  "Traditional fixed pipeline completed the happy path.",
+        "matched_patterns":  [
+                                 "final_decision=release_complete_fixed_pipeline",
+                                 "production_version=candidate"
+                             ]
+    },
+    {
+        "code":  "02",
+        "scenario":  "Telemetry-driven production failure",
+        "mode":  "BDI",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\02_telemetry_driven_production_failure_bdi.log",
+        "meaning":  "BDI saw high Prometheus error-rate telemetry, rolled back, restored reliability, and failed candidate delivery.",
+        "matched_patterns":  [
+                                 "telemetry_high_error=True",
+                                 "production_reliability_restored=True",
+                                 "delivery_failed=True",
+                                 "production_version=stable"
+                             ]
+    },
+    {
+        "code":  "02",
+        "scenario":  "Telemetry-driven production failure",
+        "mode":  "Traditional",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\02_telemetry_driven_production_failure_traditional.log",
+        "meaning":  "Traditional pipeline accepted the health-passing candidate and did not rollback.",
+        "matched_patterns":  [
+                                 "final_decision=release_complete_fixed_pipeline_no_bdi_rollback",
+                                 "production_version=candidate"
+                             ]
+    },
+    {
+        "code":  "03",
+        "scenario":  "High latency",
+        "mode":  "BDI",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\03_high_latency_bdi.log",
+        "meaning":  "BDI classified latency as high and chose pause/reobserve.",
+        "matched_patterns":  [
+                                 "telemetry_high_latency=True",
+                                 "pause_reobserve=True",
+                                 "production_version=candidate"
+                             ]
+    },
+    {
+        "code":  "03",
+        "scenario":  "High latency",
+        "mode":  "Traditional",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\03_high_latency_traditional.log",
+        "meaning":  "Traditional pipeline accepted the release without pause/reobserve reasoning.",
+        "matched_patterns":  [
+                                 "final_decision=release_complete_fixed_pipeline_no_pause_reobserve",
+                                 "production_version=candidate"
+                             ]
+    },
+    {
+        "code":  "04",
+        "scenario":  "Observability failure",
+        "mode":  "BDI",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\04_observability_failure_bdi.log",
+        "meaning":  "BDI perceived telemetry unavailable/network suspected and escalated uncertainty.",
+        "matched_patterns":  [
+                                 "pause_reobserve=True",
+                                 "manual_intervention_required=True",
+                                 "telemetry\\(production, unavailable\\)",
+                                 "network\\(production, suspected\\)"
+                             ]
+    },
+    {
+        "code":  "04",
+        "scenario":  "Observability failure",
+        "mode":  "Traditional",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\04_observability_failure_traditional.log",
+        "meaning":  "Traditional pipeline did not use telemetry as a decision source.",
+        "matched_patterns":  [
+                                 "final_decision=release_complete_fixed_pipeline_no_telemetry_reasoning",
+                                 "production_version=candidate"
+                             ]
+    },
+    {
+        "code":  "05",
+        "scenario":  "Transient health failure and retry",
+        "mode":  "BDI",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\05_transient_health_failure_and_retry_bdi.log",
+        "meaning":  "BDI restored reliability after one failed health check, retried the same candidate, and succeeded.",
+        "matched_patterns":  [
+                                 "forced_health_failure=True",
+                                 "rollback_then_retry=True",
+                                 "continue_deploy_candidate=True",
+                                 "delivery_succeeded=True",
+                                 "production_version=candidate"
+                             ]
+    },
+    {
+        "code":  "05",
+        "scenario":  "Transient health failure and retry",
+        "mode":  "Traditional",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\05_transient_health_failure_and_retry_traditional.log",
+        "meaning":  "Traditional path does not see the Java-only one-shot BDI hook.",
+        "matched_patterns":  [
+                                 "final_decision=release_complete_fixed_pipeline",
+                                 "production_version=candidate"
+                             ]
+    },
+    {
+        "code":  "06",
+        "scenario":  "Build gate failure",
+        "mode":  "BDI",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\06_build_gate_failure_bdi.log",
+        "meaning":  "BDI stopped delivery when the build gate percept failed.",
+        "matched_patterns":  [
+                                 "forced_gate_failure=True",
+                                 "delivery_failed=True",
+                                 "status\\(build, failed\\)",
+                                 "delivery_failed reason=build_failed"
+                             ]
+    },
+    {
+        "code":  "06",
+        "scenario":  "Build gate failure",
+        "mode":  "Traditional",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\06_build_gate_failure_traditional.log",
+        "meaning":  "Traditional shell path passed because BDI_FORCE_BUILD_FAIL is a Java BDI test hook.",
+        "matched_patterns":  [
+                                 "final_decision=release_complete_fixed_pipeline_if_shell_actions_pass",
+                                 "production_version=candidate"
+                             ]
+    },
+    {
+        "code":  "07",
+        "scenario":  "Rollback unavailable",
+        "mode":  "BDI",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\07_rollback_unavailable_bdi.log",
+        "meaning":  "BDI tried rollback after telemetry degradation, perceived rollback failure, and requested manual intervention.",
+        "matched_patterns":  [
+                                 "telemetry_high_error=True",
+                                 "rollback_failed=True",
+                                 "manual_intervention_required=True",
+                                 "status\\(rollback\\(production\\), failed\\)"
+                             ]
+    },
+    {
+        "code":  "07",
+        "scenario":  "Rollback unavailable",
+        "mode":  "Traditional",
+        "evidence_passed":  true,
+        "log_file":  "C:\\NHI\\2026_IT-Project\\260023_BDI_CICD\\experiments\\results\\20260825_124329\\logs\\07_rollback_unavailable_traditional.log",
+        "meaning":  "Traditional path had no BDI recovery action or manual-intervention reasoning.",
+        "matched_patterns":  [
+                                 "final_decision=release_complete_fixed_pipeline_no_manual_intervention_reason",
+                                 "production_version=candidate"
+                             ]
+    }
+]
