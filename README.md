@@ -23,7 +23,7 @@ delivery_deferred(candidate, Reason)
 production_reliability_restored
 ```
 
-## Current Architecture
+## Architecture
 
 ```text
 User or experiment script
@@ -76,9 +76,9 @@ payment service traffic
 | Thresholds        | `telemetry/thresholds.yml`                     | Defines when telemetry becomes normal/high/low.                                   |
 | Experiment guides | `experiments/01_*.md` to `experiments/07_*.md` | Manual scenario instructions and expected evidence.                               |
 
-## What Is Real in the Current Demo
+## BDI Execution Workflow
 
-The active BDI path is:
+The BDI execution path is:
 
 ```text
 bdi/project.mas2j
@@ -92,7 +92,7 @@ bdi/project.mas2j
 -> Jason beliefs and plans
 ```
 
-Jason really executes the agent plans. The Java environment really runs the shell scripts. Prometheus telemetry is really queried and converted into Jason percepts such as:
+Jason executes the agent plans. The Java environment runs the shell scripts. Prometheus telemetry is queried and converted into Jason percepts such as:
 
 ```text
 metric(production,error_rate,high)
@@ -101,8 +101,6 @@ metric(production,availability,high)
 environment(production,unstable)
 status(rollback(production),passed)
 ```
-
-The older generated-belief path under `bdi/cicd_agent.asl`, `bdi/run_agent_for_scenario.sh`, and `telemetry/generated_beliefs/` is legacy scaffolding. It is useful for project history, but it should not be used as evidence that Jason made runtime decisions.
 
 ## Prerequisites
 
@@ -272,8 +270,8 @@ Prometheus:         http://localhost:9090
 
 | Document                              | Purpose                                                                                   |
 | ------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `docs/project_guide.md`               | Beginner-friendly project guide with phases, architecture, variables, and current status. |
-| `docs/extra_information.md`           | More detailed current architecture and execution workflow.                                |
+| `docs/project_guide.md`               | Beginner-friendly project guide with phases, architecture, variables, and project status. |
+| `docs/extra_information.md`           | More detailed architecture and execution workflow.                                        |
 | `experiments/manual_demo_pipeline.md` | Common manual demo process and scenario trigger guidance.                                 |
 | `bdi/README.md`                       | Jason-specific runtime notes.                                                             |
 
@@ -283,4 +281,4 @@ This is a local research prototype. It does not implement Kubernetes, cloud depl
 
 Some failure cases use Java-side test hooks such as `BDI_FORCE_BUILD_FAIL` so the agent can be tested without permanently modifying CI/CD scripts. Telemetry-driven scenarios use actual service traffic, service metrics, Prometheus scraping, Java polling, and Jason percept updates.
 
-The current research claim is intentionally narrow: a plain Jason BDI controller can execute the same CI/CD action interface as a traditional pipeline, perceive action and telemetry results as beliefs, and choose more explainable context-sensitive responses than a fixed sequence.
+The research claim is intentionally narrow: a plain Jason BDI controller can execute the same CI/CD action interface as a traditional pipeline, perceive action and telemetry results as beliefs, and choose more explainable context-sensitive responses than a fixed sequence.
